@@ -47,72 +47,104 @@ func (q *QrImage) placeSquare(point image.Point, size int, col QrColor, fill boo
 	}
 }
 
-func (q *QrImage) placeMarkers() {
+func (q *QrImage) placeFinders() {
 	q.placeSquare(image.Point{0, 0}, 8, QrWhite, false, PlaceOptions{Protected: true})
 	q.placeSquare(image.Point{0, 0}, 7, QrBlack, false, PlaceOptions{Protected: true})
 	q.placeSquare(image.Point{1, 1}, 5, QrWhite, false, PlaceOptions{Protected: true})
 	q.placeSquare(image.Point{2, 2}, 3, QrBlack, true, PlaceOptions{Protected: true})
 
-	q.placeSquare(image.Point{0, 13}, 8, QrWhite, false, PlaceOptions{Protected: true})
-	q.placeSquare(image.Point{0, 14}, 7, QrBlack, false, PlaceOptions{Protected: true})
-	q.placeSquare(image.Point{1, 15}, 5, QrWhite, false, PlaceOptions{Protected: true})
-	q.placeSquare(image.Point{2, 16}, 3, QrBlack, true, PlaceOptions{Protected: true})
+	modules := capacityTable[q.Version].modules
 
-	q.placeSquare(image.Point{13, 0}, 8, QrWhite, false, PlaceOptions{Protected: true})
-	q.placeSquare(image.Point{14, 0}, 7, QrBlack, false, PlaceOptions{Protected: true})
-	q.placeSquare(image.Point{15, 1}, 5, QrWhite, false, PlaceOptions{Protected: true})
-	q.placeSquare(image.Point{16, 2}, 3, QrBlack, true, PlaceOptions{Protected: true})
+	q.placeSquare(image.Point{0, modules - 8}, 8, QrWhite, false, PlaceOptions{Protected: true})
+	q.placeSquare(image.Point{0, modules - 7}, 7, QrBlack, false, PlaceOptions{Protected: true})
+	q.placeSquare(image.Point{1, modules - 6}, 5, QrWhite, false, PlaceOptions{Protected: true})
+	q.placeSquare(image.Point{2, modules - 5}, 3, QrBlack, true, PlaceOptions{Protected: true})
+
+	q.placeSquare(image.Point{modules - 8, 0}, 8, QrWhite, false, PlaceOptions{Protected: true})
+	q.placeSquare(image.Point{modules - 7, 0}, 7, QrBlack, false, PlaceOptions{Protected: true})
+	q.placeSquare(image.Point{modules - 6, 1}, 5, QrWhite, false, PlaceOptions{Protected: true})
+	q.placeSquare(image.Point{modules - 5, 2}, 3, QrBlack, true, PlaceOptions{Protected: true})
 }
 
-func (q *QrImage) placeTimingMarkers() {
-	q.PlacePoint(image.Point{8, 6}, QrBlack, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{9, 6}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{10, 6}, QrBlack, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{11, 6}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{12, 6}, QrBlack, PlaceOptions{Protected: true})
+func (q *QrImage) placeTimingPattern() {
+	modules := capacityTable[q.Version].modules
+	colors := []QrColor{QrBlack, QrWhite}
 
-	q.PlacePoint(image.Point{6, 8}, QrBlack, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{6, 9}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{6, 10}, QrBlack, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{6, 11}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{6, 12}, QrBlack, PlaceOptions{Protected: true})
+	for i := 8; i < modules-8; i++ {
+		if i%2 == 0 {
+			q.PlacePoint(image.Point{i, 6}, colors[0], PlaceOptions{Protected: true})
+		} else {
+			q.PlacePoint(image.Point{i, 6}, colors[1], PlaceOptions{Protected: true})
+		}
+	}
+
+	for i := 8; i < modules-8; i++ {
+		if i%2 == 0 {
+			q.PlacePoint(image.Point{6, i}, colors[0], PlaceOptions{Protected: true})
+		} else {
+			q.PlacePoint(image.Point{6, i}, colors[1], PlaceOptions{Protected: true})
+		}
+	}
 }
 
-func (q *QrImage) placeFormatAndReserved() {
-	q.PlacePoint(image.Point{8, 13}, QrBlack, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{8, 0}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{8, 1}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{8, 2}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{8, 3}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{8, 4}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{8, 5}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{8, 7}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{8, 8}, QrWhite, PlaceOptions{Protected: true})
+func (q *QrImage) formatModules() [][3]int {
+	size := capacityTable[q.Version].modules
 
-	q.PlacePoint(image.Point{0, 8}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{1, 8}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{2, 8}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{3, 8}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{4, 8}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{5, 8}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{7, 8}, QrWhite, PlaceOptions{Protected: true})
+	mods := [][3]int{
+		// Copia 1, alrededor del finder superior izquierdo
+		{8, 0, 0}, {8, 1, 1}, {8, 2, 2}, {8, 3, 3}, {8, 4, 4}, {8, 5, 5},
+		{8, 7, 6}, // salta la fila 6 (timing)
+		{8, 8, 7},
+		{7, 8, 8},
+		{5, 8, 9}, {4, 8, 10}, {3, 8, 11}, {2, 8, 12}, {1, 8, 13}, {0, 8, 14}, // salta col 6
+	}
 
-	q.PlacePoint(image.Point{13, 8}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{14, 8}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{15, 8}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{16, 8}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{17, 8}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{18, 8}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{19, 8}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{20, 8}, QrWhite, PlaceOptions{Protected: true})
+	// Copia 2: bits 0-7 por la fila 8 desde la derecha
+	for i := range 8 {
+		mods = append(mods, [3]int{size - 1 - i, 8, i})
+	}
+	// Copia 2: bits 8-14 por la columna 8 desde abajo (arranca en size-7 → saltea el dark module en size-8)
+	for i := 8; i < 15; i++ {
+		mods = append(mods, [3]int{8, size - 15 + i, i})
+	}
 
-	q.PlacePoint(image.Point{8, 14}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{8, 15}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{8, 16}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{8, 17}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{8, 18}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{8, 19}, QrWhite, PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{8, 20}, QrWhite, PlaceOptions{Protected: true})
+	return mods
+}
+
+func (q *QrImage) placeReserved() {
+	reservedY := 4*q.Version + 9
+	// Dark reserved module
+	q.PlacePoint(image.Point{8, reservedY}, QrBlack, PlaceOptions{Protected: true})
+
+	for _, m := range q.formatModules() {
+		q.PlacePoint(image.Point{m[0], m[1]}, QrWhite, PlaceOptions{Protected: true})
+	}
+}
+
+func (q *QrImage) placeAlignmentPatterns() {
+	if q.Version == 1 {
+		return
+	}
+
+	coords := alignmentCoords(q.Version)
+	size := capacityTable[q.Version].modules
+	last := size - 1
+
+	isFinderCorner := func(x, y int) bool {
+		return (x == 6 && y == 6) || (x == 6 && y == last-6) || (x == last-6 && y == 6)
+	}
+
+	for _, x := range coords {
+		for _, y := range coords {
+			if isFinderCorner(x, y) {
+				continue
+			}
+
+			q.placeSquare(image.Point{x - 2, y - 2}, 5, QrBlack, false, PlaceOptions{Protected: true})
+			q.placeSquare(image.Point{x - 1, y - 1}, 3, QrWhite, false, PlaceOptions{Protected: true})
+			q.PlacePoint(image.Point{x, y}, QrBlack, PlaceOptions{Protected: true})
+		}
+	}
 }
 
 type bitReader struct {
@@ -191,32 +223,14 @@ func bitOf(f uint16, i int) int {
 
 func (q *QrImage) placeMetadata(mask int) {
 	group := (int(q.ErrorCorrectionLevel.value) << 3) | mask
-	size := capacityTable[q.Version].modules
 	encoded := encodeFormat(uint16(group))
-
 	colors := []QrColor{QrWhite, QrBlack}
 
-	for i := 0; i <= 5; i++ {
-		q.PlacePoint(image.Point{8, i}, colors[bitOf(encoded, i)], PlaceOptions{Protected: true})
+	for _, m := range q.formatModules() {
+		bit := bitOf(encoded, m[2])
+		col := colors[bit]
+		q.PlacePoint(image.Point{m[0], m[1]}, col, PlaceOptions{Protected: true})
 	}
-	q.PlacePoint(image.Point{8, 7}, colors[bitOf(encoded, 6)], PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{8, 8}, colors[bitOf(encoded, 7)], PlaceOptions{Protected: true})
-	q.PlacePoint(image.Point{7, 8}, colors[bitOf(encoded, 8)], PlaceOptions{Protected: true})
-
-	for i := 9; i < 15; i++ {
-		q.PlacePoint(image.Point{14 - i, 8}, colors[bitOf(encoded, i)], PlaceOptions{Protected: true})
-	}
-
-	// ---- Copia 2: bajo el finder de arriba-derecha y al lado del de abajo-izquierda ----
-	// bits 0-7 por la fila 8, desde la columna size-1 hacia la izquierda (20..13)
-	for i := 0; i < 8; i++ {
-		q.PlacePoint(image.Point{size - 1 - i, 8}, colors[bitOf(encoded, i)], PlaceOptions{Protected: true})
-	}
-	// bits 8-14 por la columna 8, filas size-7 a size-1 (14..20)
-	for i := 8; i < 15; i++ {
-		q.PlacePoint(image.Point{8, size - 15 + i}, colors[bitOf(encoded, i)], PlaceOptions{Protected: true})
-	}
-	// el módulo oscuro fijo (8, size-8) ya lo pusiste en el esqueleto
 }
 
 func (q *QrImage) drawPoint(point QrPoint) {

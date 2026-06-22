@@ -1,6 +1,7 @@
 package qrimage
 
 import (
+	"math"
 	"strings"
 )
 
@@ -98,15 +99,34 @@ func charValue(c byte) int {
 	return strings.IndexByte(ALPHA_NUMERIC_CHARSET, c)
 }
 
-type QrMask int
+func alignmentCoords(version int) []int {
+	if version == 1 {
+		return nil
+	}
+	first := 6
+	last := (17 + 4*version) - 7
+	count := int(math.Ceil(float64(last-first)/28)) + 1
 
-const (
-	QrMask0 QrMask = iota
-	QrMask1
-	QrMask2
-	QrMask3
-	QrMask4
-	QrMask5
-	QrMask6
-	QrMask7
-)
+	result := make([]int, count)
+	result[0] = first
+	result[count-1] = last
+	if count > 2 {
+		step := int(math.Ceil(float64(last-first) / float64(count-1)))
+		if step%2 == 1 { // corrección de paridad
+			frac := float64(last-first) / float64(count-1)
+			r := math.Floor(frac)
+			if frac-r >= 0.5 {
+				r = math.Ceil(frac)
+			}
+			if int(r)%2 == 0 {
+				step--
+			} else {
+				step++
+			}
+		}
+		for i := 1; i < count-1; i++ {
+			result[i] = last - step*(count-1-i) // se llena desde el final
+		}
+	}
+	return result
+}

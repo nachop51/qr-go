@@ -13,6 +13,7 @@ func createQrImage(data []byte, width, height int, filename string) (*qrimage.Qr
 		SetFilename(filename).
 		SetBlackColor(color.Black).
 		SetWhiteColor(color.White).
+		SetErrorCorrectionLevel(qrimage.QrCorrectionLevelLow).
 		Build()
 
 	if err != nil {
@@ -28,7 +29,7 @@ func createQrImage(data []byte, width, height int, filename string) (*qrimage.Qr
 }
 
 func main() {
-	var data = []byte("te amo")
+	var data = []byte("Hola mi amor, como estas?")
 
 	_, err := createQrImage(data, 400, 400, "image.png")
 	if err != nil {

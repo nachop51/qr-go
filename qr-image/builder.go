@@ -78,7 +78,6 @@ func (b *QrImageBuilder) Build() (*QrImage, error) {
 	encodingMode := b.detectEncodingMode()
 	version, err := b.detectVersion(encodingMode)
 
-	fmt.Printf("Encoding mode detected: %d\n", encodingMode)
 	fmt.Printf("Version detected: %d\n", version)
 
 	if err != nil {
@@ -116,9 +115,10 @@ func (b *QrImageBuilder) Build() (*QrImage, error) {
 		points:               points,
 	}
 
-	qrImage.placeMarkers()
-	qrImage.placeTimingMarkers()
-	qrImage.placeFormatAndReserved()
+	qrImage.placeFinders()
+	qrImage.placeTimingPattern()
+	qrImage.placeReserved()
+	qrImage.placeAlignmentPatterns()
 
 	data := qrImage.encode()
 	qrImage.placeData(data)
