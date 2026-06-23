@@ -14,7 +14,7 @@ func createQrImage(data []byte, width, height int, filename string) (*qrimage.Qr
 		SetFilename(filename).
 		SetBlackColor(color.Black).
 		SetWhiteColor(color.White).
-		SetErrorCorrectionLevel(qrimage.QrCorrectionLevelMedium).
+		// SetErrorCorrectionLevel(qrimage.QrCorrectionLevelLow).
 		SetErrorCorrectionLevel(qrimage.QrCorrectionLevelHigh).
 		Build()
 
@@ -36,7 +36,7 @@ func createQrImage(data []byte, width, height int, filename string) (*qrimage.Qr
 }
 
 func main() {
-	var data = []byte("Hola mi amor, te amo, espero que estee ")
+	var data = []byte("https://github.com/nachop51/qr-go")
 
 	_, err := createQrImage(data, 400, 400, "image.png")
 	if err != nil {

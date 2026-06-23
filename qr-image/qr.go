@@ -110,28 +110,94 @@ func (q *QrImage) errorCorrection(data []byte) []byte {
 	return ecBytes
 }
 
-type QrDataBlock struct {
-	numBlocks  int
-	ecPerBlock int
-	g1, d1     int
-	g2, d2     int
+type BlockRecipe struct {
+	EcPerBlock int
+
+	Group1Blocks  int
+	Group1DataLen int
+
+	Group2Blocks  int
+	Group2DataLen int
 }
 
-func (q *QrImage) blockRecipe() QrDataBlock {
+func (q *QrImage) blockRecipe() BlockRecipe {
 	level := q.ErrorCorrectionLevel.level
 
 	g1 := eccTable[q.Version][level][0]
 	g2 := eccTable[q.Version][level][1]
-	numBlocks := g1 + g2
+	totalBlocks := g1 + g2
 
 	totalEC := capacityTable[q.Version].ec[level]
 	totalData := capacityTable[q.Version].bytes - totalEC
 
-	ecPerBlock := totalEC / numBlocks
-	d1 := totalData / numBlocks
-	d2 := d1 + 1
+	d1 := totalData / totalBlocks
+	return BlockRecipe{
+		EcPerBlock:    totalEC / totalBlocks,
+		Group1Blocks:  g1,
+		Group1DataLen: d1,
+		Group2Blocks:  g2,
+		Group2DataLen: d1 + 1,
+	}
+}
 
-	return QrDataBlock{numBlocks, ecPerBlock, g1, d1, g2, d2}
+func (q *QrImage) splitIntoBlocks(data []byte) [][]byte {
+	recipe := q.blockRecipe()
+	blocks := [][]byte{}
+	offset := 0
+
+	for i := 0; i < recipe.Group1Blocks; i++ {
+		blocks = append(blocks, data[offset:offset+recipe.Group1DataLen])
+		offset += recipe.Group1DataLen
+	}
+	for i := 0; i < recipe.Group2Blocks; i++ {
+		blocks = append(blocks, data[offset:offset+recipe.Group2DataLen])
+		offset += recipe.Group2DataLen
+	}
+
+	return blocks
+}
+
+func (q *QrImage) errorCorrectionPerBlock(blocks [][]byte) [][]byte {
+	recipe := q.blockRecipe()
+	field := gf256.NewField(0x11d, 0x02)
+	enc := gf256.NewRSEncoder(field, recipe.EcPerBlock)
+
+	ecs := make([][]byte, len(blocks))
+
+	for i, b := range blocks {
+		ecs[i] = make([]byte, recipe.EcPerBlock)
+		enc.ECC(b, ecs[i])
+	}
+
+	return ecs
+}
+
+func interleave(dataBlocks, ecBlocks [][]byte) []byte {
+	result := []byte{}
+
+	maxDataLen := 0
+	for _, block := range dataBlocks {
+		if len(block) > maxDataLen {
+			maxDataLen = len(block)
+		}
+	}
+
+	for col := 0; col < maxDataLen; col++ {
+		for _, block := range dataBlocks {
+			if col < len(block) {
+				result = append(result, block[col])
+			}
+		}
+	}
+
+	ecLen := len(ecBlocks[0])
+	for col := range ecLen {
+		for _, block := range ecBlocks {
+			result = append(result, block[col])
+		}
+	}
+
+	return result
 }
 
 func (q *QrImage) encode() []byte {
@@ -152,16 +218,15 @@ func (q *QrImage) encode() []byte {
 
 	q.addTerminatorAndPadding(&bitsData)
 
-	recipe := q.blockRecipe()
+	blocks := q.splitIntoBlocks(bitsData.data)
+	ecs := q.errorCorrectionPerBlock(blocks)
 
-	fmt.Printf("%+v\n", recipe)
-
-	ecBytes := q.errorCorrection(bitsData.data)
+	// ecBytes := q.errorCorrection(bitsData.data)
 
 	// Combine data and error correction bytes
-	fullData := append(bitsData.data, ecBytes...)
+	// fullData := append(bitsData.data, ecBytes...)
 
-	return fullData
+	return interleave(blocks, ecs)
 }
 
 func flip(col QrColor) QrColor {

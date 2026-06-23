@@ -130,6 +130,35 @@ func (q *QrImage) formatModules() [][3]int {
 	return mods
 }
 
+func (q *QrImage) versionModules() [][3]int {
+	if q.Version < 7 {
+		return nil
+	}
+
+	size := capacityTable[q.Version].modules
+	mods := [][3]int{}
+
+	bit := 0
+	// Copia 1: 6 columnas (0..5) × 3 filas (size-11..size-9)
+	for col := 0; col < 6; col++ {
+		for row := size - 11; row <= size-9; row++ {
+			mods = append(mods, [3]int{col, row, bit})
+			bit++
+		}
+	}
+
+	bit = 0
+	// Copia 2: transpuesta — 6 filas (0..5) × 3 columnas (size-11..size-9)
+	for row := 0; row < 6; row++ {
+		for col := size - 11; col <= size-9; col++ {
+			mods = append(mods, [3]int{col, row, bit})
+			bit++
+		}
+	}
+
+	return mods
+}
+
 func (q *QrImage) placeReserved() {
 	reservedY := 4*q.Version + 9
 	// Dark reserved module
@@ -137,6 +166,12 @@ func (q *QrImage) placeReserved() {
 
 	for _, m := range q.formatModules() {
 		q.PlacePoint(image.Point{m[0], m[1]}, QrWhite, PlaceOptions{Protected: true})
+	}
+
+	if q.Version >= 7 {
+		for _, m := range q.versionModules() {
+			q.PlacePoint(image.Point{m[0], m[1]}, QrWhite, PlaceOptions{Protected: true})
+		}
 	}
 }
 
@@ -238,17 +273,43 @@ func encodeFormat(d uint16) uint16 {
 	return code ^ 0x5412
 }
 
+func encodeVersion(version uint16) uint32 {
+	const g = 0x1F25 // generador BCH(18,6), grado 12
+
+	v := uint32(version) << 12 // dejar lugar para 12 bits de EC
+	// limpiar los 6 bits de datos, posiciones 17..12
+	for i := 17; i >= 12; i-- {
+		if (v>>uint(i))&1 == 1 {
+			v ^= g << uint(i-12)
+		}
+	}
+	// ahora v tiene el resto en los 12 bits bajos
+	return (uint32(version) << 12) | v
+	// sin XOR final
+}
+
 func bitOf(f uint16, i int) int {
 	return int((f >> uint(i)) & 1)
 }
 
 func (q *QrImage) placeMetadata(mask int) {
 	group := (int(q.ErrorCorrectionLevel.value) << 3) | mask
-	encoded := encodeFormat(uint16(group))
+	encFormat := encodeFormat(uint16(group))
+	encVersion := encodeVersion(uint16(q.Version))
 	colors := []QrColor{QrWhite, QrBlack}
 
 	for _, m := range q.formatModules() {
-		bit := bitOf(encoded, m[2])
+		bit := bitOf(encFormat, m[2])
+		col := colors[bit]
+		q.PlacePoint(image.Point{m[0], m[1]}, col, PlaceOptions{Protected: true})
+	}
+
+	if q.Version < 7 {
+		return
+	}
+
+	for _, m := range q.versionModules() {
+		bit := bitOf(uint16(encVersion), m[2])
 		col := colors[bit]
 		q.PlacePoint(image.Point{m[0], m[1]}, col, PlaceOptions{Protected: true})
 	}
