@@ -2,7 +2,6 @@ package qrimage
 
 import (
 	"errors"
-	"fmt"
 	"image"
 	"image/color"
 )
@@ -78,8 +77,6 @@ func (b *QrImageBuilder) Build() (*QrImage, error) {
 	encodingMode := b.detectEncodingMode()
 	version, err := b.detectVersion(encodingMode)
 
-	fmt.Printf("Version detected: %d\n", version)
-
 	if err != nil {
 		return nil, err
 	}
@@ -102,45 +99,44 @@ func (b *QrImageBuilder) Build() (*QrImage, error) {
 		}
 	}
 
+	pixelSize, quietZoneX, quietZoneY := measurePixelAndQuietZone(b.width, b.height, version)
+
 	qrImage := &QrImage{
 		Data:                 b.data,
 		EncodingMode:         encodingMode,
 		Version:              version,
 		ErrorCorrectionLevel: b.errorCorrectionLevel,
 		img:                  img,
-		pixelSize:            img.Rect.Max.X / modules,
+		pixelSize:            pixelSize,
+		quietZoneX:           quietZoneX,
+		quietZoneY:           quietZoneY,
 		Filename:             b.filename,
 		blackColor:           b.blackColor,
 		whiteColor:           b.whiteColor,
 		points:               points,
 	}
 
+	qrImage.drawQuietZone()
 	qrImage.placeFinders()
 	qrImage.placeTimingPattern()
 	qrImage.placeReserved()
 	qrImage.placeAlignmentPatterns()
 
 	data := qrImage.encode()
-	qrImage.placeData(data)
+	err = qrImage.placeData(data)
+	if err != nil {
+		return nil, err
+	}
 
 	scores := make([]int, 8)
 
 	for mask := range 8 {
-		err := qrImage.applyMask(mask)
+		score, err := qrImage.measureMaskScore(mask)
 		if err != nil {
 			return nil, err
 		}
-		// 		qrImage.Filename = fmt.Sprintf("mask_%d.png", mask)
-		// qrImage.Draw()
-		// qrImage.Save()
-		scores[mask] = qrImage.measureMaskScore()
-		err = qrImage.applyMask(mask)
-		if err != nil {
-			return nil, err
-		}
+		scores[mask] = score
 	}
-
-	fmt.Printf("Scores: %v\n", scores)
 
 	maskIdx := 0
 	// get lowest mask score
@@ -149,8 +145,9 @@ func (b *QrImageBuilder) Build() (*QrImage, error) {
 			maskIdx = i
 		}
 	}
+	qrImage.Mask = maskIdx
 
-	qrImage.debugMasks()
+	// qrImage.debugMasks()
 
 	qrImage.applyMask(maskIdx)
 	qrImage.placeMetadata(maskIdx)

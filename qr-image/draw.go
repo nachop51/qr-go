@@ -1,8 +1,8 @@
 package qrimage
 
 import (
+	"fmt"
 	"image"
-	"log"
 )
 
 type PlaceOptions struct {
@@ -45,6 +45,25 @@ func (q *QrImage) placeSquare(point image.Point, size int, col QrColor, fill boo
 			}
 		}
 	}
+}
+
+func (q *QrImage) drawQuietZone() {
+	modules := capacityTable[q.Version].modules
+	qrWidth := modules * q.pixelSize
+	qrHeight := modules * q.pixelSize
+
+	fillRect := func(startX, startY, endX, endY int) {
+		for y := startY; y < endY; y++ {
+			for x := startX; x < endX; x++ {
+				q.img.Set(x, y, q.whiteColor)
+			}
+		}
+	}
+
+	fillRect(0, 0, q.img.Rect.Max.X, q.quietZoneY)
+	fillRect(0, q.quietZoneY+qrHeight, q.img.Rect.Max.X, q.img.Rect.Max.Y)
+	fillRect(0, q.quietZoneY, q.quietZoneX, q.quietZoneY+qrHeight)
+	fillRect(q.quietZoneX+qrWidth, q.quietZoneY, q.img.Rect.Max.X, q.quietZoneY+qrHeight)
 }
 
 func (q *QrImage) placeFinders() {
@@ -166,7 +185,7 @@ func (r *bitReader) next() QrColor {
 	return QrWhite
 }
 
-func (q *QrImage) placeData(data []byte) {
+func (q *QrImage) placeData(data []byte) error {
 	modules := capacityTable[q.Version].modules
 	r := bitReader{data: data}
 
@@ -198,8 +217,10 @@ func (q *QrImage) placeData(data []byte) {
 	}
 
 	if r.pos != len(r.data)*8 {
-		log.Fatalf("bitReader position (%d) does not match data length (%d)", r.pos, len(r.data)*8)
+		return fmt.Errorf("data does not fit in QR code: pos=%d, len=%d", r.pos, len(r.data)*8)
 	}
+
+	return nil
 }
 
 func encodeFormat(d uint16) uint16 {
@@ -234,8 +255,8 @@ func (q *QrImage) placeMetadata(mask int) {
 }
 
 func (q *QrImage) drawPoint(point QrPoint) {
-	startingX := point.x * q.pixelSize
-	startingY := point.y * q.pixelSize
+	startingX := point.x*q.pixelSize + q.quietZoneX
+	startingY := point.y*q.pixelSize + q.quietZoneY
 
 	color := q.blackColor
 

@@ -18,9 +18,12 @@ type QrImage struct {
 	EncodingMode         QrEncodingMode
 	ErrorCorrectionLevel QrCorrectionLevel
 	Version              int
+	Mask                 int
 	Filename             string
 	img                  *image.RGBA
 	pixelSize            int
+	quietZoneX           int
+	quietZoneY           int
 	blackColor           color.Color
 	whiteColor           color.Color
 	points               [][]QrPoint
@@ -107,6 +110,30 @@ func (q *QrImage) errorCorrection(data []byte) []byte {
 	return ecBytes
 }
 
+type QrDataBlock struct {
+	numBlocks  int
+	ecPerBlock int
+	g1, d1     int
+	g2, d2     int
+}
+
+func (q *QrImage) blockRecipe() QrDataBlock {
+	level := q.ErrorCorrectionLevel.level
+
+	g1 := eccTable[q.Version][level][0]
+	g2 := eccTable[q.Version][level][1]
+	numBlocks := g1 + g2
+
+	totalEC := capacityTable[q.Version].ec[level]
+	totalData := capacityTable[q.Version].bytes - totalEC
+
+	ecPerBlock := totalEC / numBlocks
+	d1 := totalData / numBlocks
+	d2 := d1 + 1
+
+	return QrDataBlock{numBlocks, ecPerBlock, g1, d1, g2, d2}
+}
+
 func (q *QrImage) encode() []byte {
 
 	var bitsData bitWriter
@@ -124,6 +151,10 @@ func (q *QrImage) encode() []byte {
 	}
 
 	q.addTerminatorAndPadding(&bitsData)
+
+	recipe := q.blockRecipe()
+
+	fmt.Printf("%+v\n", recipe)
 
 	ecBytes := q.errorCorrection(bitsData.data)
 
@@ -247,43 +278,51 @@ func (q *QrImage) maskPenalty2() int {
 
 // TODO: Redo this function, I don't understand it properly
 func (q *QrImage) maskPenalty3() int {
-	size := 4*q.Version + 17
+	size := capacityTable[q.Version].modules
 	penalty := 0
-	patA := [11]int{1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0}
-	patB := [11]int{0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1}
 
-	bit := func(x, y int) int {
-		if q.at(x, y).col == QrBlack {
-			return 1
-		}
-		return 0
+	bit := func(x, y int) bool {
+		return q.at(x, y).col == QrBlack
 	}
 
-	scan := func(get func(k int) int) int {
+	// Patrón 1:1:3:1:1 = oscuro,claro,oscuro x3,claro,oscuro (7 módulos)
+	// Más 4 módulos claros de un lado (no de los dos a la vez)
+	check := func(get func(k int) bool) int {
 		p := 0
-		for start := 0; start <= size-11; start++ {
-			a, b := true, true
-			for i := range 11 {
-				v := get(start + i)
-				if v != patA[i] {
-					a = false
+		for i := 0; i <= size-7; i++ {
+			// Buscar el patrón finder 7 en (i..i+6): D L DDD L D
+			if get(i) && !get(i+1) && get(i+2) && get(i+3) && get(i+4) && !get(i+5) && get(i+6) {
+				// Verificar 4 claros antes (i-4..i-1) o después (i+7..i+10)
+				before := true
+				for k := 1; k <= 4; k++ {
+					if i-k < 0 || get(i-k) {
+						before = false
+						break
+					}
 				}
-				if v != patB[i] {
-					b = false
+				after := true
+				for k := range 4 {
+					if i+7+k >= size || get(i+7+k) {
+						after = false
+						break
+					}
 				}
-			}
-			if a || b {
-				p += 40
+				if before {
+					p += 40
+				}
+				if after {
+					p += 40
+				}
 			}
 		}
 		return p
 	}
 
 	for y := range size {
-		penalty += scan(func(x int) int { return bit(x, y) })
+		penalty += check(func(x int) bool { return bit(x, y) })
 	}
 	for x := range size {
-		penalty += scan(func(y int) int { return bit(x, y) })
+		penalty += check(func(y int) bool { return bit(x, y) })
 	}
 	return penalty
 }
@@ -301,21 +340,43 @@ func (q *QrImage) maskPenalty4() int {
 	}
 
 	size := capacityTable[q.Version].modules
-	percent := dark * 100 / (size * size)
+	total := size * size
+	percent := float64(dark) * 100 / float64(total)
 
-	deviation := percent - 50
-
-	if deviation < 0 {
-		deviation = -deviation
+	prev := int(percent/5) * 5
+	next := prev
+	if float64(prev) < percent {
+		next += 5
 	}
 
-	return (deviation / 5) * 10
+	abs := func(n int) int {
+		if n < 0 {
+			return -n
+		}
+		return n
+	}
+
+	prevPenalty := abs(prev-50) / 5 * 10
+	nextPenalty := abs(next-50) / 5 * 10
+
+	return min(prevPenalty, nextPenalty)
 }
 
-func (q *QrImage) measureMaskScore() int {
+func (q *QrImage) measureMaskScore(mask int) (int, error) {
+	err := q.applyMask(mask)
+	if err != nil {
+		return 0, err
+	}
+	q.placeMetadata(mask)
+
 	score := q.maskPenalty1() + q.maskPenalty2() + q.maskPenalty3() + q.maskPenalty4()
 
-	return score
+	err = q.applyMask(mask)
+	if err != nil {
+		return 0, err
+	}
+
+	return score, nil
 }
 
 func (q *QrImage) Debug() {
@@ -341,15 +402,18 @@ func (q *QrImage) Debug() {
 
 func (q *QrImage) debugMasks() {
 	originalFile := q.Filename
+	originalMask := q.Mask
 
 	for mask := range 8 {
 		q.Filename = fmt.Sprintf("mask%d.png", mask)
 		q.applyMask(mask)
+		q.placeMetadata(mask)
 		q.Draw()
 		q.Save()
 		q.applyMask(mask)
 	}
 	q.Filename = originalFile
+	q.Mask = originalMask
 }
 
 func (q *QrImage) Save() error {
