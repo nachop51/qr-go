@@ -1,4 +1,4 @@
-package qrimage
+package qr
 
 import (
 	"fmt"
@@ -9,11 +9,11 @@ type PlaceOptions struct {
 	Protected bool
 }
 
-func (q *QrImage) at(x, y int) *QrPoint {
+func (q *QrObject) at(x, y int) *QrPoint {
 	return &q.points[y][x]
 }
 
-func (q *QrImage) PlacePoint(point image.Point, col QrColor, options ...PlaceOptions) {
+func (q *QrObject) PlacePoint(point image.Point, col QrColor, options ...PlaceOptions) {
 
 	var protected bool
 	if len(options) > 0 {
@@ -34,7 +34,7 @@ func (q *QrImage) PlacePoint(point image.Point, col QrColor, options ...PlaceOpt
 	}
 }
 
-func (q *QrImage) placeSquare(point image.Point, size int, col QrColor, fill bool, options ...PlaceOptions) {
+func (q *QrObject) placeSquare(point image.Point, size int, col QrColor, fill bool, options ...PlaceOptions) {
 	for i := point.X; i < point.X+size; i++ {
 		for j := point.Y; j < point.Y+size; j++ {
 			if fill || i == point.X || i == point.X+size-1 || j == point.Y || j == point.Y+size-1 {
@@ -47,7 +47,7 @@ func (q *QrImage) placeSquare(point image.Point, size int, col QrColor, fill boo
 	}
 }
 
-func (q *QrImage) drawQuietZone() {
+func (q *QrObject) drawQuietZone() {
 	modules := capacityTable[q.Version].modules
 	qrWidth := modules * q.pixelSize
 	qrHeight := modules * q.pixelSize
@@ -66,7 +66,7 @@ func (q *QrImage) drawQuietZone() {
 	fillRect(q.quietZoneX+qrWidth, q.quietZoneY, q.img.Rect.Max.X, q.quietZoneY+qrHeight)
 }
 
-func (q *QrImage) placeFinders() {
+func (q *QrObject) placeFinders() {
 	q.placeSquare(image.Point{0, 0}, 8, QrWhite, false, PlaceOptions{Protected: true})
 	q.placeSquare(image.Point{0, 0}, 7, QrBlack, false, PlaceOptions{Protected: true})
 	q.placeSquare(image.Point{1, 1}, 5, QrWhite, false, PlaceOptions{Protected: true})
@@ -85,7 +85,7 @@ func (q *QrImage) placeFinders() {
 	q.placeSquare(image.Point{modules - 5, 2}, 3, QrBlack, true, PlaceOptions{Protected: true})
 }
 
-func (q *QrImage) placeTimingPattern() {
+func (q *QrObject) placeTimingPattern() {
 	modules := capacityTable[q.Version].modules
 	colors := []QrColor{QrBlack, QrWhite}
 
@@ -106,7 +106,7 @@ func (q *QrImage) placeTimingPattern() {
 	}
 }
 
-func (q *QrImage) formatModules() [][3]int {
+func (q *QrObject) formatModules() [][3]int {
 	size := capacityTable[q.Version].modules
 
 	mods := [][3]int{
@@ -130,7 +130,7 @@ func (q *QrImage) formatModules() [][3]int {
 	return mods
 }
 
-func (q *QrImage) versionModules() [][3]int {
+func (q *QrObject) versionModules() [][3]int {
 	if q.Version < 7 {
 		return nil
 	}
@@ -159,7 +159,7 @@ func (q *QrImage) versionModules() [][3]int {
 	return mods
 }
 
-func (q *QrImage) placeReserved() {
+func (q *QrObject) placeReserved() {
 	reservedY := 4*q.Version + 9
 	// Dark reserved module
 	q.PlacePoint(image.Point{8, reservedY}, QrBlack, PlaceOptions{Protected: true})
@@ -175,7 +175,7 @@ func (q *QrImage) placeReserved() {
 	}
 }
 
-func (q *QrImage) placeAlignmentPatterns() {
+func (q *QrObject) placeAlignmentPatterns() {
 	if q.Version == 1 {
 		return
 	}
@@ -220,7 +220,7 @@ func (r *bitReader) next() QrColor {
 	return QrWhite
 }
 
-func (q *QrImage) placeData(data []byte) error {
+func (q *QrObject) placeData(data []byte) error {
 	modules := capacityTable[q.Version].modules
 	r := bitReader{data: data}
 
@@ -292,7 +292,7 @@ func bitOf(f uint16, i int) int {
 	return int((f >> uint(i)) & 1)
 }
 
-func (q *QrImage) placeMetadata(mask int) {
+func (q *QrObject) placeMetadata(mask int) {
 	group := (int(q.ErrorCorrectionLevel.value) << 3) | mask
 	encFormat := encodeFormat(uint16(group))
 	encVersion := encodeVersion(uint16(q.Version))
@@ -315,7 +315,7 @@ func (q *QrImage) placeMetadata(mask int) {
 	}
 }
 
-func (q *QrImage) drawPoint(point QrPoint) {
+func (q *QrObject) drawPoint(point QrPoint) {
 	startingX := point.x*q.pixelSize + q.quietZoneX
 	startingY := point.y*q.pixelSize + q.quietZoneY
 
@@ -332,7 +332,7 @@ func (q *QrImage) drawPoint(point QrPoint) {
 	}
 }
 
-func (q *QrImage) Draw() {
+func (q *QrObject) Draw() {
 	for _, points := range q.points {
 		for _, point := range points {
 			if !point.drawn {

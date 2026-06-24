@@ -3,50 +3,40 @@ package main
 import (
 	"fmt"
 	"image/color"
-	"log"
-	qrimage "nachop51/qr/qr-image"
+	qr "nachop51/qr/qr"
 )
 
-func createQrImage(data []byte, width, height int, filename string) (*qrimage.QrImage, error) {
-	img, err := qrimage.NewQrImageBuilder(data).
+func createQr(data []byte, width, height int, filename string) (*qr.QrObject, error) {
+	newQr, err := qr.NewQrBuilder(data).
 		SetWidth(width).
 		SetHeight(height).
 		SetFilename(filename).
 		SetBlackColor(color.Black).
 		SetWhiteColor(color.White).
-		// SetErrorCorrectionLevel(qrimage.QrCorrectionLevelLow).
-		SetErrorCorrectionLevel(qrimage.QrCorrectionLevelHigh).
+		SetErrorCorrectionLevel(qr.QrCorrectionLevelMedium).
+		// SetErrorCorrectionLevel(qr.QrCorrectionLevelHigh).
 		Build()
 
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Printf("Version detected: %d\n", img.Version)
-	fmt.Printf("Encoding mode detected: %b\n", img.EncodingMode)
-	fmt.Printf("Error correction level detected: %b\n", img.ErrorCorrectionLevel)
-	fmt.Printf("Mask detected: %d\n", img.Mask)
+	fmt.Printf("Version detected: %d\n", newQr.Version)
+	fmt.Printf("Encoding mode detected: %b\n", newQr.EncodingMode)
+	fmt.Printf("Error correction level detected: %b\n", newQr.ErrorCorrectionLevel)
+	fmt.Printf("Mask detected: %d\n", newQr.Mask)
 
-	// img.Debug()
+	// newQr.Debug()
 
-	img.Draw()
-	img.Save()
+	newQr.Draw()
+	newQr.Save()
 
-	return img, nil
+	return newQr, nil
 }
 
 func main() {
-	var data = []byte("https://github.com/nachop51/qr-go")
-
-	_, err := createQrImage(data, 400, 400, "image.png")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// _, err = createQrImage([]byte("Hola mundo como estas espe"), 400, 400, "image.png")
-
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
+	createQr([]byte("1289421489"), 400, 400, "numeric.png")
+	createQr([]byte("HELLO WORLD"), 400, 400, "alphanumeric.png")
+	createQr([]byte("Hola mundo!"), 400, 400, "bytes.png")
+	createQr([]byte("日本"), 400, 400, "kanji.png")
 }

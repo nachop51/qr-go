@@ -1,4 +1,4 @@
-package qrimage
+package qr
 
 import (
 	"errors"
@@ -10,7 +10,7 @@ var (
 	ErrInvalidDimensions = errors.New("invalid dimensions")
 )
 
-type QrImageBuilder struct {
+type QrBuilder struct {
 	data                 []byte
 	width                int
 	height               int
@@ -21,8 +21,8 @@ type QrImageBuilder struct {
 	whiteColor           color.Color
 }
 
-func NewQrImageBuilder(data []byte) *QrImageBuilder {
-	return &QrImageBuilder{
+func NewQrBuilder(data []byte) *QrBuilder {
+	return &QrBuilder{
 		data:                 data,
 		errorCorrectionLevel: QrCorrectionLevelMedium,
 		blackColor:           color.Black,
@@ -33,49 +33,45 @@ func NewQrImageBuilder(data []byte) *QrImageBuilder {
 	}
 }
 
-func (b *QrImageBuilder) SetWidth(width int) *QrImageBuilder {
+func (b *QrBuilder) SetWidth(width int) *QrBuilder {
 	b.width = width
 	return b
 }
 
-func (b *QrImageBuilder) SetHeight(height int) *QrImageBuilder {
+func (b *QrBuilder) SetHeight(height int) *QrBuilder {
 	b.height = height
 	return b
 }
 
-func (b *QrImageBuilder) SetFilename(filename string) *QrImageBuilder {
+func (b *QrBuilder) SetFilename(filename string) *QrBuilder {
 	b.filename = filename
 	return b
 }
 
-func (b *QrImageBuilder) SetBlackColor(blackColor color.Color) *QrImageBuilder {
+func (b *QrBuilder) SetBlackColor(blackColor color.Color) *QrBuilder {
 	b.blackColor = blackColor
 	return b
 }
 
-func (b *QrImageBuilder) SetWhiteColor(whiteColor color.Color) *QrImageBuilder {
+func (b *QrBuilder) SetWhiteColor(whiteColor color.Color) *QrBuilder {
 	b.whiteColor = whiteColor
 	return b
 }
 
-func (b *QrImageBuilder) SetVersion(version int) *QrImageBuilder {
-	b.version = version
-	return b
-}
-
-func (b *QrImageBuilder) SetErrorCorrectionLevel(level QrCorrectionLevel) *QrImageBuilder {
+func (b *QrBuilder) SetErrorCorrectionLevel(level QrCorrectionLevel) *QrBuilder {
 	b.errorCorrectionLevel = level
 	return b
 }
 
-func (b *QrImageBuilder) Build() (*QrImage, error) {
+func (b *QrBuilder) Build() (*QrObject, error) {
 	if b.width <= 0 || b.height <= 0 {
 		return nil, ErrInvalidDimensions
 	}
 	img := image.NewRGBA(image.Rect(0, 0, b.width, b.height))
 
 	encodingMode := b.detectEncodingMode()
-	version, err := b.detectVersion(encodingMode)
+	isECI := encodingMode == QrEncodingModeByte && needsECI(b.data)
+	version, err := b.detectVersion(encodingMode, isECI)
 
 	if err != nil {
 		return nil, err
@@ -101,12 +97,13 @@ func (b *QrImageBuilder) Build() (*QrImage, error) {
 
 	pixelSize, quietZoneX, quietZoneY := measurePixelAndQuietZone(b.width, b.height, version)
 
-	qrImage := &QrImage{
+	qrObj := &QrObject{
 		Data:                 b.data,
 		EncodingMode:         encodingMode,
 		Version:              version,
 		ErrorCorrectionLevel: b.errorCorrectionLevel,
 		img:                  img,
+		isECI:                isECI,
 		pixelSize:            pixelSize,
 		quietZoneX:           quietZoneX,
 		quietZoneY:           quietZoneY,
@@ -116,14 +113,14 @@ func (b *QrImageBuilder) Build() (*QrImage, error) {
 		points:               points,
 	}
 
-	qrImage.drawQuietZone()
-	qrImage.placeFinders()
-	qrImage.placeTimingPattern()
-	qrImage.placeReserved()
-	qrImage.placeAlignmentPatterns()
+	qrObj.drawQuietZone()
+	qrObj.placeFinders()
+	qrObj.placeTimingPattern()
+	qrObj.placeReserved()
+	qrObj.placeAlignmentPatterns()
 
-	data := qrImage.encode()
-	err = qrImage.placeData(data)
+	data := qrObj.encode()
+	err = qrObj.placeData(data)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +128,7 @@ func (b *QrImageBuilder) Build() (*QrImage, error) {
 	scores := make([]int, 8)
 
 	for mask := range 8 {
-		score, err := qrImage.measureMaskScore(mask)
+		score, err := qrObj.measureMaskScore(mask)
 		if err != nil {
 			return nil, err
 		}
@@ -145,12 +142,12 @@ func (b *QrImageBuilder) Build() (*QrImage, error) {
 			maskIdx = i
 		}
 	}
-	qrImage.Mask = maskIdx
+	qrObj.Mask = maskIdx
 
-	// qrImage.debugMasks()
+	// qr.debugMasks()
 
-	qrImage.applyMask(maskIdx)
-	qrImage.placeMetadata(maskIdx)
+	qrObj.applyMask(maskIdx)
+	qrObj.placeMetadata(maskIdx)
 
-	return qrImage, nil
+	return qrObj, nil
 }

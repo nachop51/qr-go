@@ -1,4 +1,4 @@
-package qrimage
+package qr
 
 import (
 	"math"
@@ -39,6 +39,11 @@ type QrPoint struct {
 	col       QrColor
 	protected bool
 	drawn     bool
+}
+
+type QrSegment struct {
+	Mode QrEncodingMode
+	Data []byte
 }
 
 // tables from qrencode-3.1.1/qrspec.c
@@ -183,4 +188,13 @@ func measurePixelAndQuietZone(width, height, version int) (int, int, int) {
 	quietZoneY := (height - modules*pixelSize) / 2
 
 	return pixelSize, quietZoneX, quietZoneY
+}
+
+func needsECI(data []byte) bool {
+	for _, b := range data {
+		if b >= 0x80 {
+			return true
+		}
+	}
+	return false
 }

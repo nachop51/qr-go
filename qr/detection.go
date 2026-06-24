@@ -1,8 +1,12 @@
-package qrimage
+package qr
 
 import (
 	"errors"
 	"strings"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/transform"
 )
 
 var (
@@ -34,11 +38,33 @@ func getBitLengthIndicator(version int, mode QrEncodingMode) int {
 
 }
 
-func (b *QrImageBuilder) detectEncodingMode() QrEncodingMode {
+func canUseKanji(data []byte) bool {
+	enc := japanese.ShiftJIS.NewEncoder()
+	sjis, _, err := transform.String(enc, string(data))
+	if err != nil {
+		return false
+	}
+	bytes := []byte(sjis)
+	// Cada kanji ocupa exactamente 2 bytes en SJIS, así que la cantidad debe ser par
+	if len(bytes)%2 != 0 {
+		return false
+	}
+	for i := 0; i < len(bytes); i += 2 {
+		v := uint16(bytes[i])<<8 | uint16(bytes[i+1])
+		if !((v >= 0x8140 && v <= 0x9FFC) || (v >= 0xE040 && v <= 0xEBBF)) {
+			return false
+		}
+	}
+	return true
+}
+
+func (b *QrBuilder) detectEncodingMode() QrEncodingMode {
 	isNumeric := true
 	isAlphanumeric := true
-	// TODO: Implement Kanji mode detection
-	// isKanji := true
+
+	if canUseKanji(b.data) {
+		return QrEncodingModeKanji
+	}
 
 	for _, c := range b.data {
 		if c < '0' || c > '9' {
@@ -57,30 +83,35 @@ func (b *QrImageBuilder) detectEncodingMode() QrEncodingMode {
 		return QrEncodingModeAlphanumeric
 	}
 
-	// Kanji mode is not implemented, default to byte mode
-
 	return QrEncodingModeByte
 }
 
-func (b *QrImageBuilder) detectVersion(encodingMode QrEncodingMode) (int, error) {
-	contentLength := len(b.data) * 8
+func (b *QrBuilder) detectVersion(encodingMode QrEncodingMode, isECI bool) (int, error) {
+	var payloadBits int
 
 	switch encodingMode {
 	case QrEncodingModeNumeric:
-		contentLength = (len(b.data) / 3) * 10
+		payloadBits = (len(b.data) / 3) * 10
 		if len(b.data)%3 == 2 {
-			contentLength += 7
+			payloadBits += 7
 		}
 		if len(b.data)%3 == 1 {
-			contentLength += 4
+			payloadBits += 4
 		}
 	case QrEncodingModeAlphanumeric:
-		contentLength = (len(b.data)/2)*11 + (len(b.data) % 2 * 6)
+		payloadBits = (len(b.data)/2)*11 + (len(b.data)%2)*6
+	case QrEncodingModeKanji:
+		payloadBits = utf8.RuneCountInString(string(b.data)) * 13
+	default:
+		payloadBits = len(b.data) * 8
 	}
 
 	for version, levelCapacity := range capacityTable {
-		bitLength := getBitLengthIndicator(version, encodingMode)
-		totalBits := 4 + bitLength + contentLength
+		headerBits := 4 + getBitLengthIndicator(version, encodingMode)
+		if isECI {
+			headerBits += 12
+		}
+		totalBits := headerBits + payloadBits
 
 		totalCapacity := (levelCapacity.bytes - levelCapacity.ec[b.errorCorrectionLevel.level]) * 8
 

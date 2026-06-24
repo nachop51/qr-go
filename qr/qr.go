@@ -1,4 +1,4 @@
-package qrimage
+package qr
 
 import (
 	"errors"
@@ -8,18 +8,21 @@ import (
 	"image/png"
 	"os"
 
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/transform"
 	"rsc.io/qr/gf256"
 )
 
 var QrMaskError = errors.New("invalid mask: a number between 0 and 7 must be provided")
 
-type QrImage struct {
+type QrObject struct {
 	Data                 []byte
 	EncodingMode         QrEncodingMode
 	ErrorCorrectionLevel QrCorrectionLevel
 	Version              int
 	Mask                 int
 	Filename             string
+	isECI                bool
 	img                  *image.RGBA
 	pixelSize            int
 	quietZoneX           int
@@ -45,13 +48,13 @@ func (w *bitWriter) appendBits(value, count int) {
 	}
 }
 
-func (q *QrImage) encodeBytes(bitsData *bitWriter) {
+func (q *QrObject) encodeBytes(bitsData *bitWriter) {
 	for _, b := range q.Data {
 		bitsData.appendBits(int(b), 8)
 	}
 }
 
-func (q *QrImage) encodeNumeric(bitsData *bitWriter) {
+func (q *QrObject) encodeNumeric(bitsData *bitWriter) {
 	i := 0
 
 	for ; i+2 < len(q.Data); i += 3 {
@@ -68,7 +71,7 @@ func (q *QrImage) encodeNumeric(bitsData *bitWriter) {
 	}
 }
 
-func (q *QrImage) encodeAlphanumeric(bitsData *bitWriter) {
+func (q *QrObject) encodeAlphanumeric(bitsData *bitWriter) {
 	i := 0
 
 	for ; i+1 < len(q.Data); i += 2 {
@@ -82,7 +85,30 @@ func (q *QrImage) encodeAlphanumeric(bitsData *bitWriter) {
 	}
 }
 
-func (q *QrImage) addTerminatorAndPadding(bitsData *bitWriter) {
+func (q *QrObject) encodeKanji(bitsData *bitWriter) {
+	enc := japanese.ShiftJIS.NewEncoder()
+	sjis, _, _ := transform.String(enc, string(q.Data))
+	bytes := []byte(sjis)
+
+	for i := 0; i < len(bytes); i += 2 {
+		v := uint16(bytes[i])<<8 | uint16(bytes[i+1])
+
+		var sub uint16
+		if v >= 0x8140 && v <= 0x9FFC {
+			sub = v - 0x8140
+		} else {
+			sub = v - 0xC140
+		}
+
+		high := sub >> 8
+		low := sub & 0xFF
+		packed := int(high)*0xC0 + int(low)
+
+		bitsData.appendBits(packed, 13)
+	}
+}
+
+func (q *QrObject) addTerminatorAndPadding(bitsData *bitWriter) {
 	dataBytes := capacityTable[q.Version].bytes - capacityTable[q.Version].ec[q.ErrorCorrectionLevel.level]
 	capacityBits := dataBytes * 8
 
@@ -98,18 +124,6 @@ func (q *QrImage) addTerminatorAndPadding(bitsData *bitWriter) {
 	}
 }
 
-func (q *QrImage) errorCorrection(data []byte) []byte {
-	ecCount := capacityTable[q.Version].ec[q.ErrorCorrectionLevel.level]
-
-	field := gf256.NewField(0x11d, 0x02)
-	enc := gf256.NewRSEncoder(field, ecCount)
-
-	ecBytes := make([]byte, ecCount)
-	enc.ECC(data, ecBytes)
-
-	return ecBytes
-}
-
 type BlockRecipe struct {
 	EcPerBlock int
 
@@ -120,7 +134,7 @@ type BlockRecipe struct {
 	Group2DataLen int
 }
 
-func (q *QrImage) blockRecipe() BlockRecipe {
+func (q *QrObject) blockRecipe() BlockRecipe {
 	level := q.ErrorCorrectionLevel.level
 
 	g1 := eccTable[q.Version][level][0]
@@ -140,7 +154,7 @@ func (q *QrImage) blockRecipe() BlockRecipe {
 	}
 }
 
-func (q *QrImage) splitIntoBlocks(data []byte) [][]byte {
+func (q *QrObject) splitIntoBlocks(data []byte) [][]byte {
 	recipe := q.blockRecipe()
 	blocks := [][]byte{}
 	offset := 0
@@ -157,7 +171,7 @@ func (q *QrImage) splitIntoBlocks(data []byte) [][]byte {
 	return blocks
 }
 
-func (q *QrImage) errorCorrectionPerBlock(blocks [][]byte) [][]byte {
+func (q *QrObject) errorCorrectionPerBlock(blocks [][]byte) [][]byte {
 	recipe := q.blockRecipe()
 	field := gf256.NewField(0x11d, 0x02)
 	enc := gf256.NewRSEncoder(field, recipe.EcPerBlock)
@@ -200,12 +214,24 @@ func interleave(dataBlocks, ecBlocks [][]byte) []byte {
 	return result
 }
 
-func (q *QrImage) encode() []byte {
+func (q *QrObject) dataLength() int {
+	if q.EncodingMode == QrEncodingModeKanji {
+		sjis, _, _ := transform.String(japanese.ShiftJIS.NewEncoder(), string(q.Data))
+		return len(sjis) / 2
+	}
+	return len(q.Data)
+}
 
+func (q *QrObject) encode() []byte {
 	var bitsData bitWriter
 
+	if q.isECI {
+		bitsData.appendBits(0b0111, 4)
+		bitsData.appendBits(26, 8)
+	}
+
 	bitsData.appendBits(int(q.EncodingMode), 4)
-	bitsData.appendBits(len(q.Data), getBitLengthIndicator(q.Version, q.EncodingMode))
+	bitsData.appendBits(q.dataLength(), getBitLengthIndicator(q.Version, q.EncodingMode))
 
 	switch q.EncodingMode {
 	case QrEncodingModeByte:
@@ -214,6 +240,8 @@ func (q *QrImage) encode() []byte {
 		q.encodeNumeric(&bitsData)
 	case QrEncodingModeAlphanumeric:
 		q.encodeAlphanumeric(&bitsData)
+	case QrEncodingModeKanji:
+		q.encodeKanji(&bitsData)
 	}
 
 	q.addTerminatorAndPadding(&bitsData)
@@ -258,7 +286,7 @@ func maskCondition(mask, x, y int) bool {
 	return false
 }
 
-func (q *QrImage) applyMask(mask int) error {
+func (q *QrObject) applyMask(mask int) error {
 	if mask < 0 || mask > 7 {
 		return QrMaskError
 	}
@@ -281,7 +309,7 @@ func (q *QrImage) applyMask(mask int) error {
 
 // Penalize 5 or more consecutive black/white pixels horizontally or vertically
 // 3 + (consecutive - 5)
-func (q *QrImage) maskPenalty1() int {
+func (q *QrObject) maskPenalty1() int {
 	size := capacityTable[q.Version].modules
 	score := 0
 
@@ -323,7 +351,7 @@ func (q *QrImage) maskPenalty1() int {
 }
 
 // Penalize 2x2 black/white pixel blocks
-func (q *QrImage) maskPenalty2() int {
+func (q *QrObject) maskPenalty2() int {
 	score := 0
 
 	for y := 0; y < len(q.points)-1; y++ {
@@ -342,7 +370,7 @@ func (q *QrImage) maskPenalty2() int {
 }
 
 // TODO: Redo this function, I don't understand it properly
-func (q *QrImage) maskPenalty3() int {
+func (q *QrObject) maskPenalty3() int {
 	size := capacityTable[q.Version].modules
 	penalty := 0
 
@@ -393,7 +421,7 @@ func (q *QrImage) maskPenalty3() int {
 }
 
 // Look for % of black pixels and penalize
-func (q *QrImage) maskPenalty4() int {
+func (q *QrObject) maskPenalty4() int {
 	dark := 0
 
 	for y := range q.points {
@@ -427,7 +455,7 @@ func (q *QrImage) maskPenalty4() int {
 	return min(prevPenalty, nextPenalty)
 }
 
-func (q *QrImage) measureMaskScore(mask int) (int, error) {
+func (q *QrObject) measureMaskScore(mask int) (int, error) {
 	err := q.applyMask(mask)
 	if err != nil {
 		return 0, err
@@ -444,7 +472,7 @@ func (q *QrImage) measureMaskScore(mask int) (int, error) {
 	return score, nil
 }
 
-func (q *QrImage) Debug() {
+func (q *QrObject) Debug() {
 	for y := range q.points {
 		for x := range q.points[y] {
 			if q.points[y][x].col == QrBlack {
@@ -465,7 +493,7 @@ func (q *QrImage) Debug() {
 	}
 }
 
-func (q *QrImage) debugMasks() {
+func (q *QrObject) debugMasks() {
 	originalFile := q.Filename
 	originalMask := q.Mask
 
@@ -481,7 +509,7 @@ func (q *QrImage) debugMasks() {
 	q.Mask = originalMask
 }
 
-func (q *QrImage) Save() error {
+func (q *QrObject) Save() error {
 	f, err := os.Create(q.Filename)
 	if err != nil {
 		return err
