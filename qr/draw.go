@@ -140,7 +140,7 @@ func (q *QrObject) versionModules() [][3]int {
 
 	bit := 0
 	// Copia 1: 6 columnas (0..5) × 3 filas (size-11..size-9)
-	for col := 0; col < 6; col++ {
+	for col := range 6 {
 		for row := size - 11; row <= size-9; row++ {
 			mods = append(mods, [3]int{col, row, bit})
 			bit++
@@ -149,7 +149,7 @@ func (q *QrObject) versionModules() [][3]int {
 
 	bit = 0
 	// Copia 2: transpuesta — 6 filas (0..5) × 3 columnas (size-11..size-9)
-	for row := 0; row < 6; row++ {
+	for row := range 6 {
 		for col := size - 11; col <= size-9; col++ {
 			mods = append(mods, [3]int{col, row, bit})
 			bit++
