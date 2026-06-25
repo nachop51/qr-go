@@ -8,16 +8,13 @@ import (
 	"image/png"
 	"os"
 
-	"golang.org/x/text/encoding/japanese"
-	"golang.org/x/text/transform"
 	"rsc.io/qr/gf256"
 )
 
 var QrMaskError = errors.New("invalid mask: a number between 0 and 7 must be provided")
 
 type QrObject struct {
-	Data                 []byte
-	EncodingMode         QrEncodingMode
+	Segments             []QrSegment
 	ErrorCorrectionLevel QrCorrectionLevel
 	Version              int
 	Mask                 int
@@ -45,66 +42,6 @@ func (w *bitWriter) appendBits(value, count int) {
 		bit := byte((value >> i) & 1)
 		w.data[len(w.data)-1] |= bit << (7 - (w.bitPos % 8))
 		w.bitPos++
-	}
-}
-
-func (q *QrObject) encodeBytes(bitsData *bitWriter) {
-	for _, b := range q.Data {
-		bitsData.appendBits(int(b), 8)
-	}
-}
-
-func (q *QrObject) encodeNumeric(bitsData *bitWriter) {
-	i := 0
-
-	for ; i+2 < len(q.Data); i += 3 {
-		group := (int(q.Data[i]-'0') * 100) + (int(q.Data[i+1]-'0') * 10) + int(q.Data[i+2]-'0')
-		bitsData.appendBits(group, 10)
-	}
-	switch len(q.Data) - i {
-	case 2:
-		group := (int(q.Data[i]-'0') * 10) + int(q.Data[i+1]-'0')
-		bitsData.appendBits(group, 7)
-	case 1:
-		group := int(q.Data[i] - '0')
-		bitsData.appendBits(group, 4)
-	}
-}
-
-func (q *QrObject) encodeAlphanumeric(bitsData *bitWriter) {
-	i := 0
-
-	for ; i+1 < len(q.Data); i += 2 {
-		value := charValue(q.Data[i])*45 + charValue(q.Data[i+1])
-		bitsData.appendBits(value, 11)
-	}
-
-	if i < len(q.Data) {
-		value := charValue(q.Data[i])
-		bitsData.appendBits(value, 6)
-	}
-}
-
-func (q *QrObject) encodeKanji(bitsData *bitWriter) {
-	enc := japanese.ShiftJIS.NewEncoder()
-	sjis, _, _ := transform.String(enc, string(q.Data))
-	bytes := []byte(sjis)
-
-	for i := 0; i < len(bytes); i += 2 {
-		v := uint16(bytes[i])<<8 | uint16(bytes[i+1])
-
-		var sub uint16
-		if v >= 0x8140 && v <= 0x9FFC {
-			sub = v - 0x8140
-		} else {
-			sub = v - 0xC140
-		}
-
-		high := sub >> 8
-		low := sub & 0xFF
-		packed := int(high)*0xC0 + int(low)
-
-		bitsData.appendBits(packed, 13)
 	}
 }
 
@@ -214,14 +151,6 @@ func interleave(dataBlocks, ecBlocks [][]byte) []byte {
 	return result
 }
 
-func (q *QrObject) dataLength() int {
-	if q.EncodingMode == QrEncodingModeKanji {
-		sjis, _, _ := transform.String(japanese.ShiftJIS.NewEncoder(), string(q.Data))
-		return len(sjis) / 2
-	}
-	return len(q.Data)
-}
-
 func (q *QrObject) encode() []byte {
 	var bitsData bitWriter
 
@@ -230,18 +159,20 @@ func (q *QrObject) encode() []byte {
 		bitsData.appendBits(26, 8)
 	}
 
-	bitsData.appendBits(int(q.EncodingMode), 4)
-	bitsData.appendBits(q.dataLength(), getBitLengthIndicator(q.Version, q.EncodingMode))
+	for _, seg := range q.Segments {
+		bitsData.appendBits(int(seg.Mode), 4)
+		bitsData.appendBits(seg.dataLength(), getBitLengthIndicator(q.Version, seg.Mode))
 
-	switch q.EncodingMode {
-	case QrEncodingModeByte:
-		q.encodeBytes(&bitsData)
-	case QrEncodingModeNumeric:
-		q.encodeNumeric(&bitsData)
-	case QrEncodingModeAlphanumeric:
-		q.encodeAlphanumeric(&bitsData)
-	case QrEncodingModeKanji:
-		q.encodeKanji(&bitsData)
+		switch seg.Mode {
+		case QrEncodingModeByte:
+			seg.encodeBytes(&bitsData)
+		case QrEncodingModeNumeric:
+			seg.encodeNumeric(&bitsData)
+		case QrEncodingModeAlphanumeric:
+			seg.encodeAlphanumeric(&bitsData)
+		case QrEncodingModeKanji:
+			seg.encodeKanji(&bitsData)
+		}
 	}
 
 	q.addTerminatorAndPadding(&bitsData)

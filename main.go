@@ -5,11 +5,11 @@ import (
 	qr "nachop51/qr/qr"
 )
 
-type ValidQr interface {
+type ValidQrInput interface {
 	[]byte | string
 }
 
-func createQr[T ValidQr](data T, filename string) (*qr.QrObject, error) {
+func createQr[T ValidQrInput](data T, filename string) (*qr.QrObject, error) {
 
 	var qrBuilder *qr.QrBuilder
 
@@ -21,6 +21,7 @@ func createQr[T ValidQr](data T, filename string) (*qr.QrObject, error) {
 
 	newQr, err := qrBuilder.
 		SetErrorCorrectionLevel(qr.QrCorrectionLevelMedium).
+		// SetDisableECI(false).
 		SetFilename(filename).
 		// SetErrorCorrectionLevel(qr.QrCorrectionLevelHigh).
 		Build()
@@ -29,8 +30,8 @@ func createQr[T ValidQr](data T, filename string) (*qr.QrObject, error) {
 		return nil, err
 	}
 
+	fmt.Printf("Data: %v\n", data)
 	fmt.Printf("Version detected: %d\n", newQr.Version)
-	fmt.Printf("Encoding mode detected: %b\n", newQr.EncodingMode)
 	fmt.Printf("Error correction level detected: %b\n", newQr.ErrorCorrectionLevel)
 	fmt.Printf("Mask detected: %d\n", newQr.Mask)
 
@@ -43,8 +44,14 @@ func createQr[T ValidQr](data T, filename string) (*qr.QrObject, error) {
 }
 
 func main() {
-	createQr("1289421489", "numeric.png")
-	createQr("HELLO WORLD", "alphanumeric.png")
-	createQr([]byte("Hola mundo!"), "bytes.png")
-	createQr("日本", "kanji.png")
+	// createQr("1289421489", "numeric.png")
+	// createQr("HELLO WORLD", "alphanumeric.png")
+	// createQr([]byte("Hola mundo!"), "bytes.png")
+	// createQr("日本", "kanji.png")
+
+	// createQr("HELLO123456789012345", "hello123.png")
+	// createQr("HELLO1234567", "hello123.png")
+	// createQr("Te amooo, XOXOXOXOXO", "love.png")
+	createQr("ABC日本123", "test.png")
+	// createQr(strings.Repeat("ABC123", 43)+"ho", "strings.png")
 }

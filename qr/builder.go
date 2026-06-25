@@ -34,7 +34,6 @@ type QrBuilder struct {
 	width                int
 	height               int
 	filename             string
-	version              int
 	errorCorrectionLevel QrCorrectionLevel
 	blackColor           color.Color
 	whiteColor           color.Color
@@ -99,13 +98,62 @@ func createPoints(modules int) [][]QrPoint {
 	return points
 }
 
+func segmentsNeedsECI(segs []QrSegment) bool {
+	for _, seg := range segs {
+		if seg.Mode != QrEncodingModeByte {
+			continue
+		}
+
+		if hasNonASCII(seg.Data) {
+			return true
+		}
+	}
+	return false
+}
+
+func fitsInRange(totalBits int, vr VersionRange, level int) bool {
+	var maxV int
+
+	switch vr {
+	case VersionRangeSmall:
+		maxV = 9
+	case VersionRangeMedium:
+		maxV = 26
+	case VersionRangeLarge:
+		maxV = 40
+	}
+
+	maxCapacity := (capacityTable[maxV].bytes - capacityTable[maxV].ec[level]) * 8
+
+	return totalBits <= maxCapacity
+}
+
+func (b *QrBuilder) segmentize() ([]QrSegment, error) {
+	ranges := []VersionRange{
+		VersionRangeSmall,
+		VersionRangeMedium,
+		VersionRangeLarge,
+	}
+
+	for _, vr := range ranges {
+		segs, totalSixths := segmentizeOptimal(b.data, vr)
+		totalBits := (totalSixths + 5) / 6
+
+		if fitsInRange(totalBits, vr, b.errorCorrectionLevel.level) {
+			return segs, nil
+		}
+	}
+
+	return nil, ErrDataTooLong
+}
+
 func (b *QrBuilder) Build() (*QrObject, error) {
 	if b.width <= 0 || b.height <= 0 {
 		return nil, ErrInvalidDimensions
 	}
 
-	var encodingMode QrEncodingMode
 	var isECI bool
+	var segments []QrSegment
 
 	switch b.dataKind {
 	case QrDataKindText:
@@ -113,21 +161,26 @@ func (b *QrBuilder) Build() (*QrObject, error) {
 			return nil, ErrInvalidUTF8Text
 		}
 
-		encodingMode = b.detectEncodingMode()
+		var err error
+		segments, err = b.segmentize()
+
+		if err != nil {
+			return nil, err
+		}
 
 		if b.textECIPolicy == TextECIPolicyDisabled {
 			isECI = false
 		} else {
-			isECI = encodingMode == QrEncodingModeByte && hasNonASCII(b.data)
+			isECI = segmentsNeedsECI(segments)
 		}
 	case QrDataKindBinary:
-		encodingMode = QrEncodingModeByte
+		segments = []QrSegment{{Mode: QrEncodingModeByte, Data: b.data}}
 		isECI = false
 	default:
 		return nil, ErrInvalidDataKind
 	}
 
-	version, err := b.detectVersion(encodingMode, isECI)
+	version, err := b.detectVersion(segments, isECI)
 
 	if err != nil {
 		return nil, err
@@ -137,8 +190,7 @@ func (b *QrBuilder) Build() (*QrObject, error) {
 	pixelSize, quietZoneX, quietZoneY := measurePixelAndQuietZone(b.width, b.height, version)
 
 	qrObj := &QrObject{
-		Data:                 b.data,
-		EncodingMode:         encodingMode,
+		Segments:             segments,
 		Version:              version,
 		ErrorCorrectionLevel: b.errorCorrectionLevel,
 		img:                  image.NewRGBA(image.Rect(0, 0, b.width, b.height)),
