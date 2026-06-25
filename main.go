@@ -2,18 +2,26 @@ package main
 
 import (
 	"fmt"
-	"image/color"
 	qr "nachop51/qr/qr"
 )
 
-func createQr(data []byte, width, height int, filename string) (*qr.QrObject, error) {
-	newQr, err := qr.NewQrBuilder(data).
-		SetWidth(width).
-		SetHeight(height).
-		SetFilename(filename).
-		SetBlackColor(color.Black).
-		SetWhiteColor(color.White).
+type ValidQr interface {
+	[]byte | string
+}
+
+func createQr[T ValidQr](data T, filename string) (*qr.QrObject, error) {
+
+	var qrBuilder *qr.QrBuilder
+
+	if s, ok := any(data).(string); ok {
+		qrBuilder = qr.NewTextQrBuilder(s)
+	} else if b, ok := any(data).([]byte); ok {
+		qrBuilder = qr.NewBinaryQrBuilder(b)
+	}
+
+	newQr, err := qrBuilder.
 		SetErrorCorrectionLevel(qr.QrCorrectionLevelMedium).
+		SetFilename(filename).
 		// SetErrorCorrectionLevel(qr.QrCorrectionLevelHigh).
 		Build()
 
@@ -35,8 +43,8 @@ func createQr(data []byte, width, height int, filename string) (*qr.QrObject, er
 }
 
 func main() {
-	createQr([]byte("1289421489"), 400, 400, "numeric.png")
-	createQr([]byte("HELLO WORLD"), 400, 400, "alphanumeric.png")
-	createQr([]byte("Hola mundo!"), 400, 400, "bytes.png")
-	createQr([]byte("日本"), 400, 400, "kanji.png")
+	createQr("1289421489", "numeric.png")
+	createQr("HELLO WORLD", "alphanumeric.png")
+	createQr([]byte("Hola mundo!"), "bytes.png")
+	createQr("日本", "kanji.png")
 }

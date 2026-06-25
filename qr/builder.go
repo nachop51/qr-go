@@ -4,14 +4,33 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"unicode/utf8"
 )
 
 var (
 	ErrInvalidDimensions = errors.New("invalid dimensions")
+	ErrInvalidDataKind   = errors.New("invalid data kind")
+	ErrInvalidUTF8Text   = errors.New("invalid utf8 text")
+)
+
+type QrDataKind int
+
+const (
+	QrDataKindText QrDataKind = iota
+	QrDataKindBinary
+)
+
+type TextECIPolicy int
+
+const (
+	TextECIPolicyAuto TextECIPolicy = iota
+	TextECIPolicyDisabled
 )
 
 type QrBuilder struct {
 	data                 []byte
+	dataKind             QrDataKind
+	textECIPolicy        TextECIPolicy
 	width                int
 	height               int
 	filename             string
@@ -19,18 +38,6 @@ type QrBuilder struct {
 	errorCorrectionLevel QrCorrectionLevel
 	blackColor           color.Color
 	whiteColor           color.Color
-}
-
-func NewQrBuilder(data []byte) *QrBuilder {
-	return &QrBuilder{
-		data:                 data,
-		errorCorrectionLevel: QrCorrectionLevelMedium,
-		blackColor:           color.Black,
-		whiteColor:           color.White,
-		filename:             "image.png",
-		width:                400,
-		height:               400,
-	}
 }
 
 func (b *QrBuilder) SetWidth(width int) *QrBuilder {
@@ -63,22 +70,16 @@ func (b *QrBuilder) SetErrorCorrectionLevel(level QrCorrectionLevel) *QrBuilder 
 	return b
 }
 
-func (b *QrBuilder) Build() (*QrObject, error) {
-	if b.width <= 0 || b.height <= 0 {
-		return nil, ErrInvalidDimensions
+func (b *QrBuilder) SetDisableECI(disable bool) *QrBuilder {
+	if disable {
+		b.textECIPolicy = TextECIPolicyDisabled
+	} else {
+		b.textECIPolicy = TextECIPolicyAuto
 	}
-	img := image.NewRGBA(image.Rect(0, 0, b.width, b.height))
+	return b
+}
 
-	encodingMode := b.detectEncodingMode()
-	isECI := encodingMode == QrEncodingModeByte && needsECI(b.data)
-	version, err := b.detectVersion(encodingMode, isECI)
-
-	if err != nil {
-		return nil, err
-	}
-
-	modules := capacityTable[version].modules
-
+func createPoints(modules int) [][]QrPoint {
 	points := make([][]QrPoint, modules)
 
 	for i := range points {
@@ -95,6 +96,44 @@ func (b *QrBuilder) Build() (*QrObject, error) {
 		}
 	}
 
+	return points
+}
+
+func (b *QrBuilder) Build() (*QrObject, error) {
+	if b.width <= 0 || b.height <= 0 {
+		return nil, ErrInvalidDimensions
+	}
+
+	var encodingMode QrEncodingMode
+	var isECI bool
+
+	switch b.dataKind {
+	case QrDataKindText:
+		if !utf8.Valid(b.data) {
+			return nil, ErrInvalidUTF8Text
+		}
+
+		encodingMode = b.detectEncodingMode()
+
+		if b.textECIPolicy == TextECIPolicyDisabled {
+			isECI = false
+		} else {
+			isECI = encodingMode == QrEncodingModeByte && hasNonASCII(b.data)
+		}
+	case QrDataKindBinary:
+		encodingMode = QrEncodingModeByte
+		isECI = false
+	default:
+		return nil, ErrInvalidDataKind
+	}
+
+	version, err := b.detectVersion(encodingMode, isECI)
+
+	if err != nil {
+		return nil, err
+	}
+
+	modules := capacityTable[version].modules
 	pixelSize, quietZoneX, quietZoneY := measurePixelAndQuietZone(b.width, b.height, version)
 
 	qrObj := &QrObject{
@@ -102,7 +141,7 @@ func (b *QrBuilder) Build() (*QrObject, error) {
 		EncodingMode:         encodingMode,
 		Version:              version,
 		ErrorCorrectionLevel: b.errorCorrectionLevel,
-		img:                  img,
+		img:                  image.NewRGBA(image.Rect(0, 0, b.width, b.height)),
 		isECI:                isECI,
 		pixelSize:            pixelSize,
 		quietZoneX:           quietZoneX,
@@ -110,7 +149,7 @@ func (b *QrBuilder) Build() (*QrObject, error) {
 		Filename:             b.filename,
 		blackColor:           b.blackColor,
 		whiteColor:           b.whiteColor,
-		points:               points,
+		points:               createPoints(modules),
 	}
 
 	qrObj.drawQuietZone()
@@ -150,4 +189,25 @@ func (b *QrBuilder) Build() (*QrObject, error) {
 	qrObj.placeMetadata(maskIdx)
 
 	return qrObj, nil
+}
+
+func NewTextQrBuilder(text string) *QrBuilder {
+	return newQrBuilder([]byte(text), QrDataKindText)
+}
+
+func NewBinaryQrBuilder(data []byte) *QrBuilder {
+	return newQrBuilder(data, QrDataKindBinary)
+}
+
+func newQrBuilder(data []byte, inputKind QrDataKind) *QrBuilder {
+	return &QrBuilder{
+		data:                 append([]byte(nil), data...),
+		dataKind:             inputKind,
+		errorCorrectionLevel: QrCorrectionLevelMedium,
+		blackColor:           color.Black,
+		whiteColor:           color.White,
+		filename:             "image.png",
+		width:                400,
+		height:               400,
+	}
 }

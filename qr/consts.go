@@ -3,6 +3,7 @@ package qr
 import (
 	"math"
 	"strings"
+	"unicode/utf8"
 )
 
 type QrCorrectionLevel struct {
@@ -190,9 +191,9 @@ func measurePixelAndQuietZone(width, height, version int) (int, int, int) {
 	return pixelSize, quietZoneX, quietZoneY
 }
 
-func needsECI(data []byte) bool {
+func hasNonASCII(data []byte) bool {
 	for _, b := range data {
-		if b >= 0x80 {
+		if b >= utf8.RuneSelf {
 			return true
 		}
 	}
