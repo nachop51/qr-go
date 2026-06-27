@@ -2,13 +2,11 @@
 
 `qr-go` is a Go QR code generator that builds PNG QR images from text or binary data.
 
-The reusable package lives in `qr/` and is imported as:
+The reusable package lives at the module root and is imported as:
 
 ```go
-import qr "nachop51/qr/qr"
+import qr "nachop51/qr"
 ```
-
-![Generated QR example](image.png)
 
 ## Features
 
@@ -28,7 +26,7 @@ import qr "nachop51/qr/qr"
   - `QrCorrectionLevelQuartile`
   - `QrCorrectionLevelHigh`
 - Optional automatic ECI for text that needs non-ASCII byte segments
-  - disable it with `SetDisableECI(true)`
+  - disable it with `SetTextECIPolicy(QrTextECIPolicyDisabled)`
 - PNG output via `Draw()` + `Save()`
 - Configurable:
   - width
@@ -39,15 +37,14 @@ import qr "nachop51/qr/qr"
 
 ## Project layout
 
-- `main.go` — small local example/playground
-- `qr/` — QR encoding and rendering library
-- `image.png` — sample generated output
+- package root (`*.go`) — QR encoding and rendering library
+- `cmd/qr-demo/` — small local example/playground
 
 ## Usage
 
 ### Text example
 
-`Build()` returns `(*QrObject, error)`. The resulting `QrObject` exposes fields such as `Version`, `Mask`, `Segments`, `ErrorCorrectionLevel`, and `Filename`.
+`Build()` returns `(*QrCode, error)`. The resulting `QrCode` exposes fields such as `Version`, `Mask`, `Segments`, `ErrorCorrectionLevel`, and `Filename`.
 
 ```go
 package main
@@ -56,7 +53,7 @@ import (
 	"fmt"
 	"log"
 
-	qr "nachop51/qr/qr"
+	qr "nachop51/qr"
 )
 
 func main() {
@@ -80,7 +77,7 @@ func main() {
 For text input, the builder validates UTF-8. If the text requires non-ASCII byte segments, ECI is enabled automatically unless you call:
 
 ```go
-builder.SetDisableECI(true)
+builder.SetTextECIPolicy(qr.QrTextECIPolicyDisabled)
 ```
 
 ### Binary example
@@ -93,7 +90,7 @@ package main
 import (
 	"log"
 
-	qr "nachop51/qr/qr"
+	qr "nachop51/qr"
 )
 
 func main() {
@@ -124,8 +121,8 @@ Current exported builder methods:
 - `SetBlackColor(color.Color)`
 - `SetWhiteColor(color.Color)`
 - `SetErrorCorrectionLevel(QrCorrectionLevel)`
-- `SetDisableECI(bool)`
-- `Build() (*QrObject, error)`
+- `SetTextECIPolicy(QrTextECIPolicy)`
+- `Build() (*QrCode, error)`
 
 ### Default builder values
 
@@ -140,7 +137,7 @@ New builders currently default to:
 
 ## Built object
 
-After a successful build, `QrObject` provides:
+After a successful build, `QrCode` provides:
 
 ### Fields
 
@@ -160,13 +157,13 @@ After a successful build, `QrObject` provides:
 
 ## Running the local example
 
-The repository includes a small `main.go` playground. From the project root:
+The repository includes a small demo program under `cmd/qr-demo`. From the project root:
 
 ```bash
-go run .
+go run ./cmd/qr-demo
 ```
 
-That will generate an output image using the current example in `main.go`.
+That will generate an output image using the current example in `cmd/qr-demo/main.go`.
 
 ## Notes and limitations
 

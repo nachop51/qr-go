@@ -1,36 +1,15 @@
 package qr
 
 import (
-	"errors"
 	"image"
 	"image/color"
 	"unicode/utf8"
 )
 
-var (
-	ErrInvalidDimensions = errors.New("invalid dimensions")
-	ErrInvalidDataKind   = errors.New("invalid data kind")
-	ErrInvalidUTF8Text   = errors.New("invalid utf8 text")
-)
-
-type QrDataKind int
-
-const (
-	QrDataKindText QrDataKind = iota
-	QrDataKindBinary
-)
-
-type TextECIPolicy int
-
-const (
-	TextECIPolicyAuto TextECIPolicy = iota
-	TextECIPolicyDisabled
-)
-
 type QrBuilder struct {
 	data                 []byte
 	dataKind             QrDataKind
-	textECIPolicy        TextECIPolicy
+	textECIPolicy        QrTextECIPolicy
 	width                int
 	height               int
 	filename             string
@@ -69,66 +48,12 @@ func (b *QrBuilder) SetErrorCorrectionLevel(level QrCorrectionLevel) *QrBuilder 
 	return b
 }
 
-func (b *QrBuilder) SetDisableECI(disable bool) *QrBuilder {
-	if disable {
-		b.textECIPolicy = TextECIPolicyDisabled
-	} else {
-		b.textECIPolicy = TextECIPolicyAuto
-	}
+func (b *QrBuilder) SetTextECIPolicy(policy QrTextECIPolicy) *QrBuilder {
+	b.textECIPolicy = policy
 	return b
 }
 
-func createPoints(modules int) [][]QrPoint {
-	points := make([][]QrPoint, modules)
-
-	for i := range points {
-		points[i] = make([]QrPoint, modules)
-	}
-
-	for y := range modules {
-		for x := range modules {
-			points[y][x] = QrPoint{
-				x:   x,
-				y:   y,
-				col: QrWhite,
-			}
-		}
-	}
-
-	return points
-}
-
-func segmentsNeedsECI(segs []QrSegment) bool {
-	for _, seg := range segs {
-		if seg.Mode != QrEncodingModeByte {
-			continue
-		}
-
-		if hasNonASCII(seg.Data) {
-			return true
-		}
-	}
-	return false
-}
-
-func fitsInRange(totalBits int, vr VersionRange, level int) bool {
-	var maxV int
-
-	switch vr {
-	case VersionRangeSmall:
-		maxV = 9
-	case VersionRangeMedium:
-		maxV = 26
-	case VersionRangeLarge:
-		maxV = 40
-	}
-
-	maxCapacity := (capacityTable[maxV].bytes - capacityTable[maxV].ec[level]) * 8
-
-	return totalBits <= maxCapacity
-}
-
-func (b *QrBuilder) segmentize() ([]QrSegment, error) {
+func (b *QrBuilder) segmentize() ([]Segment, bool, error) {
 	ranges := []VersionRange{
 		VersionRangeSmall,
 		VersionRangeMedium,
@@ -139,21 +64,27 @@ func (b *QrBuilder) segmentize() ([]QrSegment, error) {
 		segs, totalSixths := segmentizeOptimal(b.data, vr)
 		totalBits := (totalSixths + 5) / 6
 
+		needsECI := b.textECIPolicy != QrTextECIPolicyDisabled && segmentsNeedsECI(segs)
+		if needsECI {
+			totalBits += 12
+		}
+
 		if fitsInRange(totalBits, vr, b.errorCorrectionLevel.level) {
-			return segs, nil
+			return segs, needsECI, nil
 		}
 	}
 
-	return nil, ErrDataTooLong
+	return nil, false, ErrDataTooLong
 }
 
-func (b *QrBuilder) Build() (*QrObject, error) {
+func (b *QrBuilder) Build() (*QrCode, error) {
 	if b.width <= 0 || b.height <= 0 {
 		return nil, ErrInvalidDimensions
 	}
 
-	var isECI bool
-	var segments []QrSegment
+	var isECI bool = false
+	var segments []Segment
+	var err error
 
 	switch b.dataKind {
 	case QrDataKindText:
@@ -161,20 +92,13 @@ func (b *QrBuilder) Build() (*QrObject, error) {
 			return nil, ErrInvalidUTF8Text
 		}
 
-		var err error
-		segments, err = b.segmentize()
+		segments, isECI, err = b.segmentize()
 
 		if err != nil {
 			return nil, err
 		}
-
-		if b.textECIPolicy == TextECIPolicyDisabled {
-			isECI = false
-		} else {
-			isECI = segmentsNeedsECI(segments)
-		}
 	case QrDataKindBinary:
-		segments = []QrSegment{{Mode: QrEncodingModeByte, Data: b.data}}
+		segments = []Segment{{Mode: EncodingModeByte, Data: b.data}}
 		isECI = false
 	default:
 		return nil, ErrInvalidDataKind
@@ -189,7 +113,7 @@ func (b *QrBuilder) Build() (*QrObject, error) {
 	modules := capacityTable[version].modules
 	pixelSize, quietZoneX, quietZoneY := measurePixelAndQuietZone(b.width, b.height, version)
 
-	qrObj := &QrObject{
+	qrObj := &QrCode{
 		Segments:             segments,
 		Version:              version,
 		ErrorCorrectionLevel: b.errorCorrectionLevel,

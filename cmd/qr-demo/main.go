@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
-	qr "nachop51/qr/qr"
+	"nachop51/qr"
 )
 
 type ValidQrInput interface {
 	[]byte | string
 }
 
-func createQr[T ValidQrInput](data T, filename string) (*qr.QrObject, error) {
+func createQr[T ValidQrInput](data T, filename string) (*qr.QrCode, error) {
 
 	var qrBuilder *qr.QrBuilder
 
@@ -21,7 +21,7 @@ func createQr[T ValidQrInput](data T, filename string) (*qr.QrObject, error) {
 
 	newQr, err := qrBuilder.
 		SetErrorCorrectionLevel(qr.QrCorrectionLevelMedium).
-		// SetDisableECI(false).
+		// SetTextECIPolicy(qr.QrTextECIPolicyDisabled).
 		SetFilename(filename).
 		// SetErrorCorrectionLevel(qr.QrCorrectionLevelHigh).
 		Build()

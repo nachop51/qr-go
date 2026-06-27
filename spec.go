@@ -6,49 +6,6 @@ import (
 	"unicode/utf8"
 )
 
-type QrCorrectionLevel struct {
-	level int
-	value int
-}
-
-var (
-	QrCorrectionLevelLow      = QrCorrectionLevel{level: 0, value: 0b01}
-	QrCorrectionLevelMedium   = QrCorrectionLevel{level: 1, value: 0b00}
-	QrCorrectionLevelQuartile = QrCorrectionLevel{level: 2, value: 0b11}
-	QrCorrectionLevelHigh     = QrCorrectionLevel{level: 3, value: 0b10}
-)
-
-type QrEncodingMode int
-
-const (
-	QrEncodingModeNumeric QrEncodingMode = 1 << iota
-	QrEncodingModeAlphanumeric
-	QrEncodingModeByte
-	QrEncodingModeKanji
-)
-
-type QrColor int
-
-const (
-	QrWhite QrColor = iota
-	QrBlack
-)
-
-type QrPoint struct {
-	x         int
-	y         int
-	col       QrColor
-	protected bool
-	drawn     bool
-}
-
-type QrSegment struct {
-	Mode QrEncodingMode
-	Data []byte
-}
-
-// tables from qrencode-3.1.1/qrspec.c
-
 var capacityTable = [41]struct {
 	modules   int
 	bytes     int

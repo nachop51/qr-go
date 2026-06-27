@@ -8,10 +8,12 @@ import (
 	"golang.org/x/text/transform"
 )
 
-func (s *QrSegment) payloadBits() int {
+const costImpossible = 1 << 30
+
+func (s *Segment) payloadBits() int {
 	n := len(s.Data)
 	switch s.Mode {
-	case QrEncodingModeNumeric:
+	case EncodingModeNumeric:
 		bits := (n / 3) * 10
 		if n%3 == 2 {
 			bits += 7
@@ -20,22 +22,30 @@ func (s *QrSegment) payloadBits() int {
 			bits += 4
 		}
 		return bits
-	case QrEncodingModeAlphanumeric:
+	case EncodingModeAlphanumeric:
 		return (n/2)*11 + (n%2)*6
-	case QrEncodingModeKanji:
+	case EncodingModeKanji:
 		return utf8.RuneCountInString(string(s.Data)) * 13
 	default:
 		return n * 8
 	}
 }
 
-func (s *QrSegment) encodeBytes(bitsData *bitWriter) {
+func (s *Segment) dataLength() int {
+	if s.Mode == EncodingModeKanji {
+		sjis, _, _ := transform.String(japanese.ShiftJIS.NewEncoder(), string(s.Data))
+		return len(sjis) / 2
+	}
+	return len(s.Data)
+}
+
+func (s *Segment) encodeBytes(bitsData *bitWriter) {
 	for _, b := range s.Data {
 		bitsData.appendBits(int(b), 8)
 	}
 }
 
-func (s *QrSegment) encodeNumeric(bitsData *bitWriter) {
+func (s *Segment) encodeNumeric(bitsData *bitWriter) {
 	i := 0
 
 	for ; i+2 < len(s.Data); i += 3 {
@@ -52,7 +62,7 @@ func (s *QrSegment) encodeNumeric(bitsData *bitWriter) {
 	}
 }
 
-func (s *QrSegment) encodeAlphanumeric(bitsData *bitWriter) {
+func (s *Segment) encodeAlphanumeric(bitsData *bitWriter) {
 	i := 0
 
 	for ; i+1 < len(s.Data); i += 2 {
@@ -66,7 +76,7 @@ func (s *QrSegment) encodeAlphanumeric(bitsData *bitWriter) {
 	}
 }
 
-func (s *QrSegment) encodeKanji(bitsData *bitWriter) {
+func (s *Segment) encodeKanji(bitsData *bitWriter) {
 	enc := japanese.ShiftJIS.NewEncoder()
 	sjis, _, _ := transform.String(enc, string(s.Data))
 	bytes := []byte(sjis)
@@ -89,16 +99,6 @@ func (s *QrSegment) encodeKanji(bitsData *bitWriter) {
 	}
 }
 
-func (s *QrSegment) dataLength() int {
-	if s.Mode == QrEncodingModeKanji {
-		sjis, _, _ := transform.String(japanese.ShiftJIS.NewEncoder(), string(s.Data))
-		return len(sjis) / 2
-	}
-	return len(s.Data)
-}
-
-const costImpossible = 1 << 30
-
 func isKanjiRune(r rune) bool {
 	sjis, _, err := transform.String(japanese.ShiftJIS.NewEncoder(), string(r))
 	if err != nil {
@@ -112,20 +112,20 @@ func isKanjiRune(r rune) bool {
 	return (v >= 0x8140 && v <= 0x9FFC) || (v >= 0xE040 && v <= 0xEBBF)
 }
 
-func charCost(r rune, mode QrEncodingMode) int {
+func charCost(r rune, mode EncodingMode) int {
 	switch mode {
-	case QrEncodingModeNumeric:
+	case EncodingModeNumeric:
 		if r >= '0' && r <= '9' {
 			return 20
 		}
-	case QrEncodingModeAlphanumeric:
+	case EncodingModeAlphanumeric:
 		if strings.ContainsRune(ALPHA_NUMERIC_CHARSET, r) {
 			return 33
 		}
 		return costImpossible
-	case QrEncodingModeByte:
+	case EncodingModeByte:
 		return utf8.RuneLen(r) * 48
-	case QrEncodingModeKanji:
+	case EncodingModeKanji:
 		if isKanjiRune(r) {
 			return 78
 		}
@@ -135,36 +135,28 @@ func charCost(r rune, mode QrEncodingMode) int {
 	return costImpossible
 }
 
-type VersionRange int
-
-const (
-	VersionRangeSmall VersionRange = iota
-	VersionRangeMedium
-	VersionRangeLarge
-)
-
-func headerCost(mode QrEncodingMode, vr VersionRange) int {
+func headerCost(mode EncodingMode, vr VersionRange) int {
 	countBits := charCountIndicatorBits(mode, vr)
 	totalBits := 4 + countBits
 
 	return totalBits * 6
 }
 
-func charCountIndicatorBits(mode QrEncodingMode, vr VersionRange) int {
+func charCountIndicatorBits(mode EncodingMode, vr VersionRange) int {
 	switch mode {
-	case QrEncodingModeNumeric:
+	case EncodingModeNumeric:
 		return []int{10, 12, 14}[vr]
-	case QrEncodingModeAlphanumeric:
+	case EncodingModeAlphanumeric:
 		return []int{9, 11, 13}[vr]
-	case QrEncodingModeByte:
+	case EncodingModeByte:
 		return []int{8, 16, 16}[vr]
-	case QrEncodingModeKanji:
+	case EncodingModeKanji:
 		return []int{8, 10, 12}[vr]
 	}
 	return 0
 }
 
-func segmentizeOptimal(data []byte, vr VersionRange) ([]QrSegment, int) {
+func segmentizeOptimal(data []byte, vr VersionRange) ([]Segment, int) {
 	runes := []rune(string(data))
 	n := len(runes)
 
@@ -172,19 +164,19 @@ func segmentizeOptimal(data []byte, vr VersionRange) ([]QrSegment, int) {
 		return nil, 0
 	}
 
-	modes := []QrEncodingMode{
-		QrEncodingModeNumeric,
-		QrEncodingModeAlphanumeric,
-		QrEncodingModeByte,
-		QrEncodingModeKanji,
+	modes := []EncodingMode{
+		EncodingModeNumeric,
+		EncodingModeAlphanumeric,
+		EncodingModeByte,
+		EncodingModeKanji,
 	}
 
 	cost := make([][]int, n+1)
-	from := make([][]QrEncodingMode, n+1)
+	from := make([][]EncodingMode, n+1)
 
 	for i := range cost {
 		cost[i] = make([]int, len(modes))
-		from[i] = make([]QrEncodingMode, len(modes))
+		from[i] = make([]EncodingMode, len(modes))
 
 		for j := range cost[i] {
 			cost[i][j] = costImpossible
@@ -232,10 +224,10 @@ func segmentizeOptimal(data []byte, vr VersionRange) ([]QrSegment, int) {
 	return reconstructSegments(runes, from, modes, bestFinal), cost[n][bestFinal]
 }
 
-func reconstructSegments(runes []rune, from [][]QrEncodingMode, modes []QrEncodingMode, finalMode int) []QrSegment {
+func reconstructSegments(runes []rune, from [][]EncodingMode, modes []EncodingMode, finalMode int) []Segment {
 	n := len(runes)
 
-	modePerChar := make([]QrEncodingMode, n)
+	modePerChar := make([]EncodingMode, n)
 	currentMode := modes[finalMode]
 
 	for i := n; i >= 1; i-- {
@@ -244,13 +236,13 @@ func reconstructSegments(runes []rune, from [][]QrEncodingMode, modes []QrEncodi
 		currentMode = from[i][currentModeIdx]
 	}
 
-	segments := []QrSegment{}
+	segments := []Segment{}
 	start := 0
 
 	for i := 1; i <= n; i++ {
 		if i == n || modePerChar[i] != modePerChar[start] {
 			chunk := string(runes[start:i])
-			segments = append(segments, QrSegment{
+			segments = append(segments, Segment{
 				Mode: modePerChar[start],
 				Data: []byte(chunk),
 			})
@@ -261,7 +253,20 @@ func reconstructSegments(runes []rune, from [][]QrEncodingMode, modes []QrEncodi
 	return segments
 }
 
-func indexOfMode(modes []QrEncodingMode, m QrEncodingMode) int {
+func segmentsNeedsECI(segs []Segment) bool {
+	for _, seg := range segs {
+		if seg.Mode != EncodingModeByte {
+			continue
+		}
+
+		if hasNonASCII(seg.Data) {
+			return true
+		}
+	}
+	return false
+}
+
+func indexOfMode(modes []EncodingMode, m EncodingMode) int {
 	for i, mm := range modes {
 		if mm == m {
 			return i

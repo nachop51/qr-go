@@ -5,15 +5,23 @@ import (
 	"image"
 )
 
+type QrPoint struct {
+	x         int
+	y         int
+	col       QrColor
+	protected bool
+	drawn     bool
+}
+
 type PlaceOptions struct {
 	Protected bool
 }
 
-func (q *QrObject) at(x, y int) *QrPoint {
+func (q *QrCode) at(x, y int) *QrPoint {
 	return &q.points[y][x]
 }
 
-func (q *QrObject) PlacePoint(point image.Point, col QrColor, options ...PlaceOptions) {
+func (q *QrCode) PlacePoint(point image.Point, col QrColor, options ...PlaceOptions) {
 
 	var protected bool
 	if len(options) > 0 {
@@ -34,7 +42,7 @@ func (q *QrObject) PlacePoint(point image.Point, col QrColor, options ...PlaceOp
 	}
 }
 
-func (q *QrObject) placeSquare(point image.Point, size int, col QrColor, fill bool, options ...PlaceOptions) {
+func (q *QrCode) placeSquare(point image.Point, size int, col QrColor, fill bool, options ...PlaceOptions) {
 	for i := point.X; i < point.X+size; i++ {
 		for j := point.Y; j < point.Y+size; j++ {
 			if fill || i == point.X || i == point.X+size-1 || j == point.Y || j == point.Y+size-1 {
@@ -47,26 +55,27 @@ func (q *QrObject) placeSquare(point image.Point, size int, col QrColor, fill bo
 	}
 }
 
-func (q *QrObject) drawQuietZone() {
-	modules := capacityTable[q.Version].modules
-	qrWidth := modules * q.pixelSize
-	qrHeight := modules * q.pixelSize
+func createPoints(modules int) [][]QrPoint {
+	points := make([][]QrPoint, modules)
 
-	fillRect := func(startX, startY, endX, endY int) {
-		for y := startY; y < endY; y++ {
-			for x := startX; x < endX; x++ {
-				q.img.Set(x, y, q.whiteColor)
+	for i := range points {
+		points[i] = make([]QrPoint, modules)
+	}
+
+	for y := range modules {
+		for x := range modules {
+			points[y][x] = QrPoint{
+				x:   x,
+				y:   y,
+				col: QrWhite,
 			}
 		}
 	}
 
-	fillRect(0, 0, q.img.Rect.Max.X, q.quietZoneY)
-	fillRect(0, q.quietZoneY+qrHeight, q.img.Rect.Max.X, q.img.Rect.Max.Y)
-	fillRect(0, q.quietZoneY, q.quietZoneX, q.quietZoneY+qrHeight)
-	fillRect(q.quietZoneX+qrWidth, q.quietZoneY, q.img.Rect.Max.X, q.quietZoneY+qrHeight)
+	return points
 }
 
-func (q *QrObject) placeFinders() {
+func (q *QrCode) placeFinders() {
 	q.placeSquare(image.Point{0, 0}, 8, QrWhite, false, PlaceOptions{Protected: true})
 	q.placeSquare(image.Point{0, 0}, 7, QrBlack, false, PlaceOptions{Protected: true})
 	q.placeSquare(image.Point{1, 1}, 5, QrWhite, false, PlaceOptions{Protected: true})
@@ -85,7 +94,7 @@ func (q *QrObject) placeFinders() {
 	q.placeSquare(image.Point{modules - 5, 2}, 3, QrBlack, true, PlaceOptions{Protected: true})
 }
 
-func (q *QrObject) placeTimingPattern() {
+func (q *QrCode) placeTimingPattern() {
 	modules := capacityTable[q.Version].modules
 	colors := []QrColor{QrBlack, QrWhite}
 
@@ -106,7 +115,7 @@ func (q *QrObject) placeTimingPattern() {
 	}
 }
 
-func (q *QrObject) formatModules() [][3]int {
+func (q *QrCode) formatModules() [][3]int {
 	size := capacityTable[q.Version].modules
 
 	mods := [][3]int{
@@ -130,7 +139,7 @@ func (q *QrObject) formatModules() [][3]int {
 	return mods
 }
 
-func (q *QrObject) versionModules() [][3]int {
+func (q *QrCode) versionModules() [][3]int {
 	if q.Version < 7 {
 		return nil
 	}
@@ -159,7 +168,7 @@ func (q *QrObject) versionModules() [][3]int {
 	return mods
 }
 
-func (q *QrObject) placeReserved() {
+func (q *QrCode) placeReserved() {
 	reservedY := 4*q.Version + 9
 	// Dark reserved module
 	q.PlacePoint(image.Point{8, reservedY}, QrBlack, PlaceOptions{Protected: true})
@@ -175,7 +184,7 @@ func (q *QrObject) placeReserved() {
 	}
 }
 
-func (q *QrObject) placeAlignmentPatterns() {
+func (q *QrCode) placeAlignmentPatterns() {
 	if q.Version == 1 {
 		return
 	}
@@ -201,26 +210,7 @@ func (q *QrObject) placeAlignmentPatterns() {
 	}
 }
 
-type bitReader struct {
-	data []byte
-	pos  int
-}
-
-func (r *bitReader) next() QrColor {
-	byteIdx := r.pos / 8
-	if byteIdx >= len(r.data) {
-		return 0
-	}
-	bit := int((r.data[byteIdx] >> (7 - r.pos%8)) & 1)
-	r.pos++
-
-	if bit == 1 {
-		return QrBlack
-	}
-	return QrWhite
-}
-
-func (q *QrObject) placeData(data []byte) error {
+func (q *QrCode) placeData(data []byte) error {
 	modules := capacityTable[q.Version].modules
 	r := bitReader{data: data}
 
@@ -258,41 +248,7 @@ func (q *QrObject) placeData(data []byte) error {
 	return nil
 }
 
-func encodeFormat(d uint16) uint16 {
-	const g = 0x537 // 10100110111, generador grado 10
-
-	v := d << 10
-	// limpio los 5 bits de datos, posiciones 14..10
-	for i := 14; i >= 10; i-- {
-		if (v>>uint(i))&1 == 1 {
-			v ^= g << uint(i-10)
-		}
-	}
-	// ahora v tiene solo el resto (10 bits bajos)
-	code := (d << 10) | v
-	return code ^ 0x5412
-}
-
-func encodeVersion(version uint16) uint32 {
-	const g = 0x1F25 // generador BCH(18,6), grado 12
-
-	v := uint32(version) << 12 // dejar lugar para 12 bits de EC
-	// limpiar los 6 bits de datos, posiciones 17..12
-	for i := 17; i >= 12; i-- {
-		if (v>>uint(i))&1 == 1 {
-			v ^= g << uint(i-12)
-		}
-	}
-	// ahora v tiene el resto en los 12 bits bajos
-	return (uint32(version) << 12) | v
-	// sin XOR final
-}
-
-func bitOf(f uint16, i int) int {
-	return int((f >> uint(i)) & 1)
-}
-
-func (q *QrObject) placeMetadata(mask int) {
+func (q *QrCode) placeMetadata(mask int) {
 	group := (int(q.ErrorCorrectionLevel.value) << 3) | mask
 	encFormat := encodeFormat(uint16(group))
 	encVersion := encodeVersion(uint16(q.Version))
@@ -312,33 +268,5 @@ func (q *QrObject) placeMetadata(mask int) {
 		bit := bitOf(uint16(encVersion), m[2])
 		col := colors[bit]
 		q.PlacePoint(image.Point{m[0], m[1]}, col, PlaceOptions{Protected: true})
-	}
-}
-
-func (q *QrObject) drawPoint(point QrPoint) {
-	startingX := point.x*q.pixelSize + q.quietZoneX
-	startingY := point.y*q.pixelSize + q.quietZoneY
-
-	color := q.blackColor
-
-	if point.col == QrWhite {
-		color = q.whiteColor
-	}
-
-	for x := startingX; x < startingX+q.pixelSize; x++ {
-		for y := startingY; y < startingY+q.pixelSize; y++ {
-			q.img.Set(x, y, color)
-		}
-	}
-}
-
-func (q *QrObject) Draw() {
-	for _, points := range q.points {
-		for _, point := range points {
-			if !point.drawn {
-				q.drawPoint(point)
-				point.drawn = true
-			}
-		}
 	}
 }

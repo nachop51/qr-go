@@ -1,14 +1,31 @@
 package qr
 
-import (
-	"errors"
+type VersionRange int
+
+const (
+	VersionRangeSmall VersionRange = iota
+	VersionRangeMedium
+	VersionRangeLarge
 )
 
-var (
-	ErrDataTooLong = errors.New("Data too long for the selected version and error correction level")
-)
+func fitsInRange(totalBits int, vr VersionRange, level int) bool {
+	var maxV int
 
-func getBitLengthIndicator(version int, mode QrEncodingMode) int {
+	switch vr {
+	case VersionRangeSmall:
+		maxV = 9
+	case VersionRangeMedium:
+		maxV = 26
+	case VersionRangeLarge:
+		maxV = 40
+	}
+
+	maxCapacity := (capacityTable[maxV].bytes - capacityTable[maxV].ec[level]) * 8
+
+	return totalBits <= maxCapacity
+}
+
+func getBitLengthIndicator(version int, mode EncodingMode) int {
 	group := 0
 	if version <= 9 {
 		group = 0
@@ -19,13 +36,13 @@ func getBitLengthIndicator(version int, mode QrEncodingMode) int {
 	}
 
 	switch mode {
-	case QrEncodingModeNumeric:
+	case EncodingModeNumeric:
 		return []int{10, 12, 14}[group]
-	case QrEncodingModeAlphanumeric:
+	case EncodingModeAlphanumeric:
 		return []int{9, 11, 13}[group]
-	case QrEncodingModeKanji:
+	case EncodingModeKanji:
 		return []int{8, 10, 12}[group]
-	case QrEncodingModeByte:
+	case EncodingModeByte:
 		return []int{8, 16, 16}[group]
 	default:
 		return 0
@@ -33,7 +50,7 @@ func getBitLengthIndicator(version int, mode QrEncodingMode) int {
 
 }
 
-func (b *QrBuilder) detectVersion(segments []QrSegment, isECI bool) (int, error) {
+func (b *QrBuilder) detectVersion(segments []Segment, isECI bool) (int, error) {
 	for version := 1; version < len(capacityTable); version++ {
 		levelCapacity := capacityTable[version]
 		totalBits := 0
