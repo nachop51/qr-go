@@ -1,4 +1,4 @@
-package qr
+package spec
 
 import (
 	"math"
@@ -103,11 +103,11 @@ var eccTable = [41][4][2]int{
 
 const ALPHA_NUMERIC_CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:"
 
-func charValue(c byte) int {
+func CharValue(c byte) int {
 	return strings.IndexByte(ALPHA_NUMERIC_CHARSET, c)
 }
 
-func alignmentCoords(version int) []int {
+func AlignmentCoords(version int) []int {
 	if version == 1 {
 		return nil
 	}
@@ -139,16 +139,7 @@ func alignmentCoords(version int) []int {
 	return result
 }
 
-func measurePixelAndQuietZone(width, height, version int) (int, int, int) {
-	modules := capacityTable[version].modules
-	pixelSize := min(width, height) / (modules + 8)
-	quietZoneX := (width - modules*pixelSize) / 2
-	quietZoneY := (height - modules*pixelSize) / 2
-
-	return pixelSize, quietZoneX, quietZoneY
-}
-
-func hasNonASCII(data []byte) bool {
+func HasNonASCII(data []byte) bool {
 	for _, b := range data {
 		if b >= utf8.RuneSelf {
 			return true
@@ -156,3 +147,75 @@ func hasNonASCII(data []byte) bool {
 	}
 	return false
 }
+
+func Modules(version int) int            { return capacityTable[version].modules }
+func TotalCodewords(version int) int     { return capacityTable[version].bytes }
+func ECCodewords(version, level int) int { return capacityTable[version].ec[level] }
+func DataCodewords(version, level int) int {
+	return capacityTable[version].bytes - capacityTable[version].ec[level]
+}
+func ECBlocks(version, level int) (int, int) {
+	eb := eccTable[version][level]
+
+	return eb[0], eb[1]
+}
+func MaxVersion() int {
+	return 40 // or -> len(capacityTable) - 1
+}
+
+type ModulePos struct{ X, Y, Bit int }
+
+func FormatModules(version int) []ModulePos {
+	size := Modules(version)
+
+	mods := []ModulePos{
+		// Copia 1, alrededor del finder superior izquierdo
+		{8, 0, 0}, {8, 1, 1}, {8, 2, 2}, {8, 3, 3}, {8, 4, 4}, {8, 5, 5},
+		{8, 7, 6}, // salta la fila 6 (timing)
+		{8, 8, 7},
+		{7, 8, 8},
+		{5, 8, 9}, {4, 8, 10}, {3, 8, 11}, {2, 8, 12}, {1, 8, 13}, {0, 8, 14}, // salta col 6
+	}
+
+	// Copia 2: bits 0-7 por la fila 8 desde la derecha
+	for i := range 8 {
+		mods = append(mods, ModulePos{size - 1 - i, 8, i})
+	}
+	// Copia 2: bits 8-14 por la columna 8 desde abajo (arranca en size-7 → saltea el dark module en size-8)
+	for i := 8; i < 15; i++ {
+		mods = append(mods, ModulePos{8, size - 15 + i, i})
+	}
+
+	return mods
+}
+
+func VersionModules(version int) []ModulePos {
+	if version < 7 {
+		return nil
+	}
+
+	size := Modules(version)
+	mods := []ModulePos{}
+
+	bit := 0
+	// Copia 1: 6 columnas (0..5) × 3 filas (size-11..size-9)
+	for col := range 6 {
+		for row := size - 11; row <= size-9; row++ {
+			mods = append(mods, ModulePos{col, row, bit})
+			bit++
+		}
+	}
+
+	bit = 0
+	// Copia 2: transpuesta — 6 filas (0..5) × 3 columnas (size-11..size-9)
+	for row := range 6 {
+		for col := size - 11; col <= size-9; col++ {
+			mods = append(mods, ModulePos{col, row, bit})
+			bit++
+		}
+	}
+
+	return mods
+}
+
+func DarkModule(version int) (x, y int) { return 8, 4*version + 9 }

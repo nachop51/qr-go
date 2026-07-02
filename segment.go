@@ -1,6 +1,8 @@
 package qr
 
 import (
+	"nachop51/qr/internal/coding"
+	"nachop51/qr/internal/spec"
 	"strings"
 	"unicode/utf8"
 
@@ -11,8 +13,8 @@ import (
 const costImpossible = 1 << 30
 
 func (s *Segment) payloadBits() int {
-	n := len(s.Data)
-	switch s.Mode {
+	n := len(s.data)
+	switch s.mode {
 	case EncodingModeNumeric:
 		bits := (n / 3) * 10
 		if n%3 == 2 {
@@ -25,60 +27,60 @@ func (s *Segment) payloadBits() int {
 	case EncodingModeAlphanumeric:
 		return (n/2)*11 + (n%2)*6
 	case EncodingModeKanji:
-		return utf8.RuneCountInString(string(s.Data)) * 13
+		return utf8.RuneCountInString(string(s.data)) * 13
 	default:
 		return n * 8
 	}
 }
 
 func (s *Segment) dataLength() int {
-	if s.Mode == EncodingModeKanji {
-		sjis, _, _ := transform.String(japanese.ShiftJIS.NewEncoder(), string(s.Data))
+	if s.mode == EncodingModeKanji {
+		sjis, _, _ := transform.String(japanese.ShiftJIS.NewEncoder(), string(s.data))
 		return len(sjis) / 2
 	}
-	return len(s.Data)
+	return len(s.data)
 }
 
-func (s *Segment) encodeBytes(bitsData *bitWriter) {
-	for _, b := range s.Data {
-		bitsData.appendBits(int(b), 8)
+func (s *Segment) encodeBytes(bitsData *coding.BitWriter) {
+	for _, b := range s.data {
+		bitsData.AppendBits(int(b), 8)
 	}
 }
 
-func (s *Segment) encodeNumeric(bitsData *bitWriter) {
+func (s *Segment) encodeNumeric(bitsData *coding.BitWriter) {
 	i := 0
 
-	for ; i+2 < len(s.Data); i += 3 {
-		group := (int(s.Data[i]-'0') * 100) + (int(s.Data[i+1]-'0') * 10) + int(s.Data[i+2]-'0')
-		bitsData.appendBits(group, 10)
+	for ; i+2 < len(s.data); i += 3 {
+		group := (int(s.data[i]-'0') * 100) + (int(s.data[i+1]-'0') * 10) + int(s.data[i+2]-'0')
+		bitsData.AppendBits(group, 10)
 	}
-	switch len(s.Data) - i {
+	switch len(s.data) - i {
 	case 2:
-		group := (int(s.Data[i]-'0') * 10) + int(s.Data[i+1]-'0')
-		bitsData.appendBits(group, 7)
+		group := (int(s.data[i]-'0') * 10) + int(s.data[i+1]-'0')
+		bitsData.AppendBits(group, 7)
 	case 1:
-		group := int(s.Data[i] - '0')
-		bitsData.appendBits(group, 4)
+		group := int(s.data[i] - '0')
+		bitsData.AppendBits(group, 4)
 	}
 }
 
-func (s *Segment) encodeAlphanumeric(bitsData *bitWriter) {
+func (s *Segment) encodeAlphanumeric(bitsData *coding.BitWriter) {
 	i := 0
 
-	for ; i+1 < len(s.Data); i += 2 {
-		value := charValue(s.Data[i])*45 + charValue(s.Data[i+1])
-		bitsData.appendBits(value, 11)
+	for ; i+1 < len(s.data); i += 2 {
+		value := spec.CharValue(s.data[i])*45 + spec.CharValue(s.data[i+1])
+		bitsData.AppendBits(value, 11)
 	}
 
-	if i < len(s.Data) {
-		value := charValue(s.Data[i])
-		bitsData.appendBits(value, 6)
+	if i < len(s.data) {
+		value := spec.CharValue(s.data[i])
+		bitsData.AppendBits(value, 6)
 	}
 }
 
-func (s *Segment) encodeKanji(bitsData *bitWriter) {
+func (s *Segment) encodeKanji(bitsData *coding.BitWriter) {
 	enc := japanese.ShiftJIS.NewEncoder()
-	sjis, _, _ := transform.String(enc, string(s.Data))
+	sjis, _, _ := transform.String(enc, string(s.data))
 	bytes := []byte(sjis)
 
 	for i := 0; i < len(bytes); i += 2 {
@@ -95,9 +97,48 @@ func (s *Segment) encodeKanji(bitsData *bitWriter) {
 		low := sub & 0xFF
 		packed := int(high)*0xC0 + int(low)
 
-		bitsData.appendBits(packed, 13)
+		bitsData.AppendBits(packed, 13)
 	}
 }
+
+// Encode writes the segment payload bits (mode header + count are written by the caller).
+func (s Segment) encode(w *coding.BitWriter) {
+	switch s.mode {
+	case spec.EncodingModeByte:
+		s.encodeBytes(w)
+	case spec.EncodingModeNumeric:
+		s.encodeNumeric(w)
+	case spec.EncodingModeAlphanumeric:
+		s.encodeAlphanumeric(w)
+	case spec.EncodingModeKanji:
+		s.encodeKanji(w)
+	}
+}
+
+func detectVersion(segments []Segment, ec QrCorrectionLevel, isECI bool) (int, error) {
+	for version := 1; version <= spec.MaxVersion(); version++ {
+		totalBits := 0
+		if isECI {
+			// Header bits
+			totalBits += 12
+		}
+
+		for _, seg := range segments {
+			totalBits += 4 + spec.CharCountBits(seg.mode, spec.VersionRangeFor(version))
+			totalBits += seg.payloadBits()
+		}
+
+		totalCapacity := spec.DataCodewords(version, ec.level) * 8
+
+		if totalBits <= totalCapacity {
+			return version, nil
+		}
+	}
+
+	return 0, spec.ErrDataTooLong
+}
+
+// ------------- DP -------------
 
 func isKanjiRune(r rune) bool {
 	sjis, _, err := transform.String(japanese.ShiftJIS.NewEncoder(), string(r))
@@ -119,7 +160,7 @@ func charCost(r rune, mode EncodingMode) int {
 			return 20
 		}
 	case EncodingModeAlphanumeric:
-		if strings.ContainsRune(ALPHA_NUMERIC_CHARSET, r) {
+		if strings.ContainsRune(spec.ALPHA_NUMERIC_CHARSET, r) {
 			return 33
 		}
 		return costImpossible
@@ -135,28 +176,11 @@ func charCost(r rune, mode EncodingMode) int {
 	return costImpossible
 }
 
-func headerCost(mode EncodingMode, vr VersionRange) int {
-	countBits := charCountIndicatorBits(mode, vr)
-	totalBits := 4 + countBits
-
-	return totalBits * 6
+func headerCost(mode EncodingMode, vr spec.VersionRange) int {
+	return (4 + spec.CharCountBits(mode, vr)) * 6
 }
 
-func charCountIndicatorBits(mode EncodingMode, vr VersionRange) int {
-	switch mode {
-	case EncodingModeNumeric:
-		return []int{10, 12, 14}[vr]
-	case EncodingModeAlphanumeric:
-		return []int{9, 11, 13}[vr]
-	case EncodingModeByte:
-		return []int{8, 16, 16}[vr]
-	case EncodingModeKanji:
-		return []int{8, 10, 12}[vr]
-	}
-	return 0
-}
-
-func segmentizeOptimal(data []byte, vr VersionRange) ([]Segment, int) {
+func segmentizeOptimal(data []byte, vr spec.VersionRange) ([]Segment, int) {
 	runes := []rune(string(data))
 	n := len(runes)
 
@@ -243,8 +267,8 @@ func reconstructSegments(runes []rune, from [][]EncodingMode, modes []EncodingMo
 		if i == n || modePerChar[i] != modePerChar[start] {
 			chunk := string(runes[start:i])
 			segments = append(segments, Segment{
-				Mode: modePerChar[start],
-				Data: []byte(chunk),
+				mode: modePerChar[start],
+				data: []byte(chunk),
 			})
 			start = i
 		}
@@ -255,11 +279,11 @@ func reconstructSegments(runes []rune, from [][]EncodingMode, modes []EncodingMo
 
 func segmentsNeedsECI(segs []Segment) bool {
 	for _, seg := range segs {
-		if seg.Mode != EncodingModeByte {
+		if seg.mode != EncodingModeByte {
 			continue
 		}
 
-		if hasNonASCII(seg.Data) {
+		if spec.HasNonASCII(seg.data) {
 			return true
 		}
 	}
@@ -274,4 +298,22 @@ func indexOfMode(modes []EncodingMode, m EncodingMode) int {
 	}
 
 	return -1
+}
+
+func (b *QrBuilder) segmentize() ([]Segment, bool, error) {
+	ranges := []spec.VersionRange{spec.VersionRangeSmall, spec.VersionRangeMedium, spec.VersionRangeLarge}
+	for _, vr := range ranges {
+		segs, sixths := segmentizeOptimal(b.data, vr)
+		totalBits := (sixths + 5) / 6 // costs are in sixth-bits; ceil to bits
+
+		needsECI := b.textECIPolicy != QrTextECIPolicyDisabled && segmentsNeedsECI(segs)
+		if needsECI {
+			totalBits += 12
+		}
+
+		if totalBits <= spec.DataCodewords(spec.MaxVersionForRange(vr), b.errorCorrectionLevel.level)*8 {
+			return segs, needsECI, nil
+		}
+	}
+	return nil, false, spec.ErrDataTooLong
 }

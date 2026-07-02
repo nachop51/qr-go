@@ -1,70 +1,132 @@
 package qr
 
-type bitWriter struct {
-	data   []byte
-	bitPos int
-}
+import (
+	"nachop51/qr/internal/coding"
+	"nachop51/qr/internal/spec"
+)
 
-func (w *bitWriter) appendBits(value, count int) {
-	for i := count - 1; i >= 0; i-- {
-		if w.bitPos%8 == 0 {
-			w.data = append(w.data, 0)
-		}
-		bit := byte((value >> i) & 1)
-		w.data[len(w.data)-1] |= bit << (7 - (w.bitPos % 8))
-		w.bitPos++
-	}
-}
-
-func (q *QrCode) addTerminatorAndPadding(bitsData *bitWriter) {
-	dataBytes := capacityTable[q.Version].bytes - capacityTable[q.Version].ec[q.ErrorCorrectionLevel.level]
+func addTerminatorAndPadding(bitsData *coding.BitWriter, version int, ec QrCorrectionLevel) {
+	dataBytes := spec.DataCodewords(version, ec.level)
 	capacityBits := dataBytes * 8
 
-	terminatorBits := min(4, capacityBits-bitsData.bitPos)
+	terminatorBits := min(4, capacityBits-bitsData.BitLen())
 
-	bitsData.appendBits(0, terminatorBits)
+	bitsData.AppendBits(0, terminatorBits)
 	// Bit align
-	bitsData.appendBits(0, (8-(bitsData.bitPos%8))%8)
+	bitsData.AppendBits(0, (8-(bitsData.BitLen()%8))%8)
 
 	pad := []byte{0xEC, 0x11}
-	for i := 0; bitsData.bitPos < capacityBits; i++ {
-		bitsData.appendBits(int(pad[i%2]), 8)
+	for i := 0; bitsData.BitLen() < capacityBits; i++ {
+		bitsData.AppendBits(int(pad[i%2]), 8)
 	}
 }
 
-func (q *QrCode) encode() []byte {
-	var bitsData bitWriter
+type BlockRecipe struct {
+	EcPerBlock int
 
-	if q.isECI {
-		bitsData.appendBits(0b0111, 4)
-		bitsData.appendBits(26, 8)
+	Group1Blocks  int
+	Group1DataLen int
+
+	Group2Blocks  int
+	Group2DataLen int
+}
+
+func blockRecipe(version int, ec QrCorrectionLevel) BlockRecipe {
+	g1, g2 := spec.ECBlocks(version, ec.level)
+	totalBlocks := g1 + g2
+
+	totalEC := spec.ECCodewords(version, ec.level)
+	totalData := spec.DataCodewords(version, ec.level)
+
+	d1 := totalData / totalBlocks
+	return BlockRecipe{
+		EcPerBlock:    totalEC / totalBlocks,
+		Group1Blocks:  g1,
+		Group1DataLen: d1,
+		Group2Blocks:  g2,
+		Group2DataLen: d1 + 1,
+	}
+}
+
+func splitIntoBlocks(data []byte, version int, ec QrCorrectionLevel) [][]byte {
+	recipe := blockRecipe(version, ec)
+	blocks := [][]byte{}
+	offset := 0
+
+	for i := 0; i < recipe.Group1Blocks; i++ {
+		blocks = append(blocks, data[offset:offset+recipe.Group1DataLen])
+		offset += recipe.Group1DataLen
+	}
+	for i := 0; i < recipe.Group2Blocks; i++ {
+		blocks = append(blocks, data[offset:offset+recipe.Group2DataLen])
+		offset += recipe.Group2DataLen
 	}
 
-	for _, seg := range q.Segments {
-		bitsData.appendBits(int(seg.Mode), 4)
-		bitsData.appendBits(seg.dataLength(), getBitLengthIndicator(q.Version, seg.Mode))
+	return blocks
+}
 
-		switch seg.Mode {
-		case EncodingModeByte:
-			seg.encodeBytes(&bitsData)
-		case EncodingModeNumeric:
-			seg.encodeNumeric(&bitsData)
-		case EncodingModeAlphanumeric:
-			seg.encodeAlphanumeric(&bitsData)
-		case EncodingModeKanji:
-			seg.encodeKanji(&bitsData)
+func errorCorrectionPerBlock(blocks [][]byte, version int, ec QrCorrectionLevel) [][]byte {
+	recipe := blockRecipe(version, ec)
+	enc := coding.NewRSEncoder(recipe.EcPerBlock)
+
+	ecs := make([][]byte, len(blocks))
+
+	for i, b := range blocks {
+		ecs[i] = coding.ReedSolomon(b, recipe.EcPerBlock, enc)
+	}
+
+	return ecs
+}
+
+func buildCodewords(segments []Segment, version int, ec QrCorrectionLevel, isECI bool) []byte {
+	var bitsData coding.BitWriter
+
+	if isECI {
+		bitsData.AppendBits(0b0111, 4)
+		bitsData.AppendBits(26, 8)
+	}
+
+	for _, seg := range segments {
+		bitsData.AppendBits(int(seg.mode), 4)
+		bitsData.AppendBits(seg.dataLength(), spec.CharCountBits(seg.mode, spec.VersionRangeFor(version)))
+
+		seg.encode(&bitsData)
+	}
+
+	addTerminatorAndPadding(&bitsData, version, ec)
+
+	blocks := splitIntoBlocks(bitsData.Data(), version, ec)
+	ecs := errorCorrectionPerBlock(blocks, version, ec)
+
+	return coding.Interleave(blocks, ecs)
+}
+
+func encodeFormat(d uint16) uint16 {
+	const g = 0x537 // 10100110111, generador grado 10
+
+	v := d << 10
+	// limpio los 5 bits de datos, posiciones 14..10
+	for i := 14; i >= 10; i-- {
+		if (v>>uint(i))&1 == 1 {
+			v ^= g << uint(i-10)
 		}
 	}
+	// ahora v tiene solo el resto (10 bits bajos)
+	code := (d << 10) | v
+	return code ^ 0x5412
+}
 
-	q.addTerminatorAndPadding(&bitsData)
+func encodeVersion(version uint16) uint32 {
+	const g = 0x1F25 // generador BCH(18,6), grado 12
 
-	blocks := q.splitIntoBlocks(bitsData.data)
-	ecs := q.errorCorrectionPerBlock(blocks)
-
-	// ecBytes := q.errorCorrection(bitsData.data)
-
-	// Combine data and error correction bytes
-	// fullData := append(bitsData.data, ecBytes...)
-
-	return interleave(blocks, ecs)
+	v := uint32(version) << 12 // dejar lugar para 12 bits de EC
+	// limpiar los 6 bits de datos, posiciones 17..12
+	for i := 17; i >= 12; i-- {
+		if (v>>uint(i))&1 == 1 {
+			v ^= g << uint(i-12)
+		}
+	}
+	// ahora v tiene el resto en los 12 bits bajos
+	return (uint32(version) << 12) | v
+	// sin XOR final
 }
