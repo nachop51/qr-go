@@ -1,186 +1,166 @@
 # qr-go
 
-`qr-go` is a Go QR code generator that builds PNG QR images from text or binary data.
-
-The reusable package lives at the module root and is imported as:
+`qr-go` is a dependency-light QR code generator written in Go. It encodes text
+or binary data into a QR matrix and renders it to a terminal, PNG, or SVG.
 
 ```go
-import qr "nachop51/qr"
+import qr "github.com/nachop51/qr-go"
+```
+
+## Install
+
+```sh
+go get github.com/nachop51/qr-go
 ```
 
 ## Features
 
 - Build QR codes from:
-  - text via `NewTextQrBuilder`
-  - binary data via `NewBinaryQrBuilder`
-- Automatic segmentation across:
-  - numeric
-  - alphanumeric
-  - byte
-  - kanji
-- Automatic version detection
+  - text via `NewTextBuilder`
+  - binary data via `NewBinaryBuilder`
+- Automatic segmentation (dynamic programming) across the four modes:
+  numeric, alphanumeric, byte, and kanji
+- Automatic version detection (1–40)
 - Automatic mask selection
-- Supported error correction levels:
-  - `QrCorrectionLevelLow`
-  - `QrCorrectionLevelMedium`
-  - `QrCorrectionLevelQuartile`
-  - `QrCorrectionLevelHigh`
-- Optional automatic ECI for text that needs non-ASCII byte segments
-  - disable it with `SetTextECIPolicy(QrTextECIPolicyDisabled)`
-- PNG output via `Draw()` + `Save()`
-- Configurable:
-  - width
-  - height
-  - filename
-  - black color
-  - white color
+- Error correction levels: `CorrectionLevelLow`, `CorrectionLevelMedium`,
+  `CorrectionLevelQuartile`, `CorrectionLevelHigh`
+- Optional automatic ECI when text needs non-ASCII byte segments
+  (disable with `SetTextECIPolicy(qr.TextECIPolicyDisabled)`)
+- Pluggable renderers: terminal (default), PNG, SVG
+
+## Quick start
+
+`Build()` returns `(*qr.Code, error)`. The builder defaults to the terminal
+renderer, so the code below prints the QR to stdout:
+
+```go
+package main
+
+import (
+	"log"
+
+	qr "github.com/nachop51/qr-go"
+)
+
+func main() {
+	code, err := qr.NewTextBuilder("HELLO WORLD").
+		SetErrorCorrectionLevel(qr.CorrectionLevelMedium).
+		Build()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := code.Render(); err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+## Rendering
+
+Renderers implement `render.Renderer`. Select one with `SetRenderer`, then call
+`code.Render()`. Each renderer is an immutable value with fluent options.
+
+### PNG
+
+```go
+import (
+	"os"
+
+	qr "github.com/nachop51/qr-go"
+	"github.com/nachop51/qr-go/render/png"
+)
+
+f, _ := os.Create("qr.png")
+defer f.Close()
+
+code, err := qr.NewTextBuilder("https://example.com").
+	SetRenderer(png.New().Writer(f).Width(512).Height(512).Quiet(4)).
+	Build()
+if err != nil {
+	log.Fatal(err)
+}
+if err := code.Render(); err != nil {
+	log.Fatal(err)
+}
+```
+
+PNG options: `Writer(io.Writer)`, `Width(int)`, `Height(int)`, `Quiet(int)`,
+`Dark(color.Color)`, `White(color.Color)`. If no writer is set, it writes to
+`test.png` in the working directory.
+
+### SVG
+
+```go
+import "github.com/nachop51/qr-go/render/svg"
+
+builder.SetRenderer(svg.New().Writer(f).Module(8).Dark("#111111").Light("#ffffff"))
+```
+
+SVG options: `Writer(io.Writer)`, `Module(int)` (module size in px),
+`Quiet(int)`, `Dark(string)`, `Light(string)`. Defaults to `os.Stdout`.
+
+### Terminal (default)
+
+```go
+import "github.com/nachop51/qr-go/render/terminal"
+
+builder.SetRenderer(terminal.New().Quiet(2))
+```
+
+Terminal options: `Writer(io.Writer)`, `Quiet(int)`, `Dark(string)`,
+`Light(string)`. Defaults to `os.Stdout` with block characters.
+
+## Binary data
+
+```go
+code, err := qr.NewBinaryBuilder([]byte{0x00, 0x01, 0x02, 0xff}).
+	SetErrorCorrectionLevel(qr.CorrectionLevelHigh).
+	Build()
+```
+
+Binary input is always encoded as a single byte segment (no ECI).
+
+## Text encoding and ECI
+
+For text input the builder validates UTF-8. If the text needs non-ASCII byte
+segments, ECI is enabled automatically. Disable it with:
+
+```go
+builder.SetTextECIPolicy(qr.TextECIPolicyDisabled)
+```
+
+## Inspecting the result
+
+`qr.Code` exposes the encoding outcome and the module matrix:
+
+```go
+code.Version              // 1–40
+code.Mask                 // 0–7
+code.ErrorCorrectionLevel // the level used
+code.IsECI                // whether ECI was applied
+code.Segments             // the chosen segmentation
+code.Size()               // modules per side
+code.IsDark(x, y)         // module colour at (x, y)
+```
+
+## Command-line demo
+
+A small playground lives in `cmd/`:
+
+```sh
+go run ./cmd "HELLO WORLD"
+```
 
 ## Project layout
 
-- package root (`*.go`) — QR encoding and rendering library
-- `cmd/qr-demo/` — small local example/playground
+- package root (`*.go`) — QR encoding library and public API
+- `internal/spec` — QR spec tables (capacity, ECC, alignment, format info)
+- `internal/coding` — bit stream and Reed–Solomon error correction
+- `internal/matrix` — the module grid
+- `render/` — the renderer contract and the terminal / PNG / SVG renderers
+- `cmd/` — command-line example
 
-## Usage
+## License
 
-### Text example
-
-`Build()` returns `(*QrCode, error)`. The resulting `QrCode` exposes fields such as `Version`, `Mask`, `Segments`, `ErrorCorrectionLevel`, and `Filename`.
-
-```go
-package main
-
-import (
-	"fmt"
-	"log"
-
-	qr "nachop51/qr"
-)
-
-func main() {
-	code, err := qr.NewTextQrBuilder("ABC日本123").
-		SetFilename("text.png").
-		SetErrorCorrectionLevel(qr.QrCorrectionLevelMedium).
-		Build()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Printf("version=%d mask=%d segments=%d\n", code.Version, code.Mask, len(code.Segments))
-
-	code.Draw()
-	if err := code.Save(); err != nil {
-		log.Fatal(err)
-	}
-}
-```
-
-For text input, the builder validates UTF-8. If the text requires non-ASCII byte segments, ECI is enabled automatically unless you call:
-
-```go
-builder.SetTextECIPolicy(qr.QrTextECIPolicyDisabled)
-```
-
-### Binary example
-
-Use `NewBinaryQrBuilder` when you want to encode raw bytes directly.
-
-```go
-package main
-
-import (
-	"log"
-
-	qr "nachop51/qr"
-)
-
-func main() {
-	payload := []byte{0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02}
-
-	code, err := qr.NewBinaryQrBuilder(payload).
-		SetFilename("binary.png").
-		SetErrorCorrectionLevel(qr.QrCorrectionLevelHigh).
-		Build()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	code.Draw()
-	if err := code.Save(); err != nil {
-		log.Fatal(err)
-	}
-}
-```
-
-## Builder API
-
-Current exported builder methods:
-
-- `SetWidth(int)`
-- `SetHeight(int)`
-- `SetFilename(string)`
-- `SetBlackColor(color.Color)`
-- `SetWhiteColor(color.Color)`
-- `SetErrorCorrectionLevel(QrCorrectionLevel)`
-- `SetTextECIPolicy(QrTextECIPolicy)`
-- `Build() (*QrCode, error)`
-
-### Default builder values
-
-New builders currently default to:
-
-- width: `400`
-- height: `400`
-- filename: `image.png`
-- error correction level: `QrCorrectionLevelMedium`
-- black color: `color.Black`
-- white color: `color.White`
-
-## Built object
-
-After a successful build, `QrCode` provides:
-
-### Fields
-
-- `Version`
-- `Mask`
-- `Segments`
-- `ErrorCorrectionLevel`
-- `Filename`
-
-### Methods
-
-- `Draw()`
-- `Save() error`
-- `Debug()`
-
-`Draw()` renders the QR code into the internal image buffer, and `Save()` writes that image as a PNG file.
-
-## Running the local example
-
-The repository includes a small demo program under `cmd/qr-demo`. From the project root:
-
-```bash
-go run ./cmd/qr-demo
-```
-
-That will generate an output image using the current example in `cmd/qr-demo/main.go`.
-
-## Notes and limitations
-
-- This project is still under active development.
-- There are currently **no automated tests** in the repository.
-- PNG is the current output format exposed by the library.
-- Text input must be valid UTF-8.
-- For arbitrary raw bytes, use `NewBinaryQrBuilder`.
-- `Build()` can fail for:
-  - invalid dimensions
-  - invalid UTF-8 text
-  - data that does not fit the selected error correction level
-
-## Roadmap
-
-Likely next improvements:
-
-- add automated tests
-- expand API documentation and examples
-- provide a small CLI for generating QR codes from the command line
+[MIT](LICENSE)

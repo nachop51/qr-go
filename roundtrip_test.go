@@ -9,7 +9,7 @@ import (
 	"github.com/makiuchi-d/gozxing"
 	"github.com/makiuchi-d/gozxing/qrcode"
 
-	"nachop51/qr/render/png"
+	"github.com/nachop51/qr-go/render/png"
 )
 
 func TestBinaryRoundTrip(t *testing.T) {
@@ -17,7 +17,7 @@ func TestBinaryRoundTrip(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	qr, err := NewBinaryQrBuilder([]byte(want)).
+	qr, err := NewBinaryBuilder([]byte(want)).
 		SetRenderer(png.New().Writer(&buf)).
 		Build()
 	if err != nil {

@@ -4,11 +4,11 @@ import (
 	"errors"
 	"testing"
 
-	"nachop51/qr/render/terminal"
+	"github.com/nachop51/qr-go/render/terminal"
 )
 
 func TestDefaultRendererIsTerminal(t *testing.T) {
-	code, err := NewBinaryQrBuilder([]byte("hi")).Build()
+	code, err := NewBinaryBuilder([]byte("hi")).Build()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,7 +18,7 @@ func TestDefaultRendererIsTerminal(t *testing.T) {
 }
 
 func TestRenderNoRenderer(t *testing.T) {
-	code, err := NewBinaryQrBuilder([]byte("hi")).SetRenderer(nil).Build()
+	code, err := NewBinaryBuilder([]byte("hi")).SetRenderer(nil).Build()
 	if err != nil {
 		t.Fatal(err)
 	}

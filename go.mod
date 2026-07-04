@@ -1,4 +1,4 @@
-module nachop51/qr
+module github.com/nachop51/qr-go
 
 go 1.25.0
 

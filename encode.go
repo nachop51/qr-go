@@ -1,11 +1,11 @@
 package qr
 
 import (
-	"nachop51/qr/internal/coding"
-	"nachop51/qr/internal/spec"
+	"github.com/nachop51/qr-go/internal/coding"
+	"github.com/nachop51/qr-go/internal/spec"
 )
 
-func addTerminatorAndPadding(bitsData *coding.BitWriter, version int, ec QrCorrectionLevel) {
+func addTerminatorAndPadding(bitsData *coding.BitWriter, version int, ec CorrectionLevel) {
 	dataBytes := spec.DataCodewords(version, ec.level)
 	capacityBits := dataBytes * 8
 
@@ -31,7 +31,7 @@ type BlockRecipe struct {
 	Group2DataLen int
 }
 
-func blockRecipe(version int, ec QrCorrectionLevel) BlockRecipe {
+func blockRecipe(version int, ec CorrectionLevel) BlockRecipe {
 	g1, g2 := spec.ECBlocks(version, ec.level)
 	totalBlocks := g1 + g2
 
@@ -48,7 +48,7 @@ func blockRecipe(version int, ec QrCorrectionLevel) BlockRecipe {
 	}
 }
 
-func splitIntoBlocks(data []byte, version int, ec QrCorrectionLevel) [][]byte {
+func splitIntoBlocks(data []byte, version int, ec CorrectionLevel) [][]byte {
 	recipe := blockRecipe(version, ec)
 	blocks := [][]byte{}
 	offset := 0
@@ -65,7 +65,7 @@ func splitIntoBlocks(data []byte, version int, ec QrCorrectionLevel) [][]byte {
 	return blocks
 }
 
-func errorCorrectionPerBlock(blocks [][]byte, version int, ec QrCorrectionLevel) [][]byte {
+func errorCorrectionPerBlock(blocks [][]byte, version int, ec CorrectionLevel) [][]byte {
 	recipe := blockRecipe(version, ec)
 	enc := coding.NewRSEncoder(recipe.EcPerBlock)
 
@@ -78,7 +78,7 @@ func errorCorrectionPerBlock(blocks [][]byte, version int, ec QrCorrectionLevel)
 	return ecs
 }
 
-func buildCodewords(segments []Segment, version int, ec QrCorrectionLevel, isECI bool) []byte {
+func buildCodewords(segments []Segment, version int, ec CorrectionLevel, isECI bool) []byte {
 	var bitsData coding.BitWriter
 
 	if isECI {

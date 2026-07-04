@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"nachop51/qr/render"
+	"github.com/nachop51/qr-go/render"
 )
 
 // Terminal writes the QR as text to its writer. Construct with New; fields are

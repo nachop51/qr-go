@@ -1,8 +1,8 @@
 package qr
 
 import (
-	"nachop51/qr/internal/coding"
-	"nachop51/qr/internal/spec"
+	"github.com/nachop51/qr-go/internal/coding"
+	"github.com/nachop51/qr-go/internal/spec"
 	"strings"
 	"unicode/utf8"
 
@@ -115,7 +115,7 @@ func (s Segment) encode(w *coding.BitWriter) {
 	}
 }
 
-func detectVersion(segments []Segment, ec QrCorrectionLevel, isECI bool) (int, error) {
+func detectVersion(segments []Segment, ec CorrectionLevel, isECI bool) (int, error) {
 	for version := 1; version <= spec.MaxVersion(); version++ {
 		totalBits := 0
 		if isECI {
@@ -300,13 +300,13 @@ func indexOfMode(modes []EncodingMode, m EncodingMode) int {
 	return -1
 }
 
-func (b *QrBuilder) segmentize() ([]Segment, bool, error) {
+func (b *Builder) segmentize() ([]Segment, bool, error) {
 	ranges := []spec.VersionRange{spec.VersionRangeSmall, spec.VersionRangeMedium, spec.VersionRangeLarge}
 	for _, vr := range ranges {
 		segs, sixths := segmentizeOptimal(b.data, vr)
 		totalBits := (sixths + 5) / 6 // costs are in sixth-bits; ceil to bits
 
-		needsECI := b.textECIPolicy != QrTextECIPolicyDisabled && segmentsNeedsECI(segs)
+		needsECI := b.textECIPolicy != TextECIPolicyDisabled && segmentsNeedsECI(segs)
 		if needsECI {
 			totalBits += 12
 		}

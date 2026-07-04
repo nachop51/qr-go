@@ -2,9 +2,9 @@ package qr
 
 import (
 	"fmt"
-	"nachop51/qr/internal/coding"
-	"nachop51/qr/internal/matrix"
-	"nachop51/qr/internal/spec"
+	"github.com/nachop51/qr-go/internal/coding"
+	"github.com/nachop51/qr-go/internal/matrix"
+	"github.com/nachop51/qr-go/internal/spec"
 )
 
 func createQrBase(version int) *matrix.Matrix {
@@ -123,7 +123,7 @@ func bitOf(f uint16, i int) int {
 	return int((f >> uint(i)) & 1)
 }
 
-func placeMetadata(m *matrix.Matrix, version, mask int, ec QrCorrectionLevel) {
+func placeMetadata(m *matrix.Matrix, version, mask int, ec CorrectionLevel) {
 	group := (ec.value << 3) | mask
 	encFormat := encodeFormat(uint16(group))
 	encVersion := encodeVersion(uint16(version))

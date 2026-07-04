@@ -14,8 +14,8 @@ import (
 	"github.com/makiuchi-d/gozxing"
 	"github.com/makiuchi-d/gozxing/qrcode"
 
-	"nachop51/qr/internal/spec"
-	"nachop51/qr/render/png"
+	"github.com/nachop51/qr-go/internal/spec"
+	"github.com/nachop51/qr-go/render/png"
 )
 
 // ---------------------------------------------------------------------------
@@ -27,7 +27,7 @@ import (
 
 // renderPNG renders a built code to a PNG in the test's temp dir at the given
 // module scale, returning the file path.
-func renderPNG(t *testing.T, code *QrCode, scale int) string {
+func renderPNG(t *testing.T, code *Code, scale int) string {
 	t.Helper()
 
 	const quiet = 4
@@ -49,7 +49,7 @@ func renderPNG(t *testing.T, code *QrCode, scale int) string {
 
 // buildPNG builds the QR and renders it to a PNG, returning the file path.
 // Fails the test on any builder/IO error.
-func buildPNG(t *testing.T, b *QrBuilder) string {
+func buildPNG(t *testing.T, b *Builder) string {
 	t.Helper()
 
 	code, err := b.Build()
@@ -134,7 +134,7 @@ func TestE2E_TextRoundTrip(t *testing.T) {
 		{"alnum_url_upper", "HTTPS://EXAMPLE.COM/PATH-1"},
 		{"alnum_symbols", "ABC $%*+-./:1234"},
 		{"byte_lower", "Hola mundo!"},
-		{"byte_url", "https://github.com/nachop51/qr-go"},
+		{"byte_url", "https://github.com/github.com/nachop51/qr-go-go"},
 		{"byte_json", `{"id":42,"ok":true}`},
 		{"mixed_alnum_num", "HELLO123456789012345"},
 		{"mixed_byte_num", "Order #100200300"},
@@ -148,18 +148,18 @@ func TestE2E_TextRoundTrip(t *testing.T) {
 
 	levels := []struct {
 		name  string
-		level QrCorrectionLevel
+		level CorrectionLevel
 	}{
-		{"L", QrCorrectionLevelLow},
-		{"M", QrCorrectionLevelMedium},
-		{"Q", QrCorrectionLevelQuartile},
-		{"H", QrCorrectionLevelHigh},
+		{"L", CorrectionLevelLow},
+		{"M", CorrectionLevelMedium},
+		{"Q", CorrectionLevelQuartile},
+		{"H", CorrectionLevelHigh},
 	}
 
 	for _, tc := range cases {
 		for _, lv := range levels {
 			t.Run(fmt.Sprintf("%s/%s", tc.name, lv.name), func(t *testing.T) {
-				path := buildPNG(t, NewTextQrBuilder(tc.text).SetErrorCorrectionLevel(lv.level))
+				path := buildPNG(t, NewTextBuilder(tc.text).SetErrorCorrectionLevel(lv.level))
 
 				got := decodeText(t, path)
 				if got != tc.text {
@@ -204,7 +204,7 @@ func TestE2E_BinaryRoundTrip(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			path := buildPNG(t, NewBinaryQrBuilder(tc.payload).SetErrorCorrectionLevel(QrCorrectionLevelMedium))
+			path := buildPNG(t, NewBinaryBuilder(tc.payload).SetErrorCorrectionLevel(CorrectionLevelMedium))
 
 			got := decodeBytes(t, path)
 			if !bytes.Equal(got, tc.payload) {
@@ -222,16 +222,16 @@ func TestE2E_BinaryRoundTrip(t *testing.T) {
 func TestE2E_ECCLevelsConsistent(t *testing.T) {
 	const payload = "Round-trip across all ECC levels: ABC日本 123 https://x.io"
 
-	levels := []QrCorrectionLevel{
-		QrCorrectionLevelLow,
-		QrCorrectionLevelMedium,
-		QrCorrectionLevelQuartile,
-		QrCorrectionLevelHigh,
+	levels := []CorrectionLevel{
+		CorrectionLevelLow,
+		CorrectionLevelMedium,
+		CorrectionLevelQuartile,
+		CorrectionLevelHigh,
 	}
 
 	for i, lv := range levels {
 		t.Run(fmt.Sprintf("level_%d", i), func(t *testing.T) {
-			path := buildPNG(t, NewTextQrBuilder(payload).SetErrorCorrectionLevel(lv))
+			path := buildPNG(t, NewTextBuilder(payload).SetErrorCorrectionLevel(lv))
 			if got := decodeText(t, path); got != payload {
 				t.Fatalf("ECC level %d mismatch: want %q got %q", i, payload, got)
 			}
@@ -250,8 +250,8 @@ func TestE2E_VersionScaling(t *testing.T) {
 		t.Run(fmt.Sprintf("digits_%d", n), func(t *testing.T) {
 			payload := strings.Repeat("1234567890", n/10+1)[:n]
 
-			code, err := NewTextQrBuilder(payload).
-				SetErrorCorrectionLevel(QrCorrectionLevelLow).
+			code, err := NewTextBuilder(payload).
+				SetErrorCorrectionLevel(CorrectionLevelLow).
 				Build()
 			if err != nil {
 				t.Fatalf("build n=%d: %v", n, err)
@@ -281,7 +281,7 @@ func TestE2E_CustomScales(t *testing.T) {
 
 	for _, scale := range []int{4, 8, 12, 16} {
 		t.Run(fmt.Sprintf("scale_%d", scale), func(t *testing.T) {
-			code, err := NewTextQrBuilder(payload).Build()
+			code, err := NewTextBuilder(payload).Build()
 			if err != nil {
 				t.Fatalf("build: %v", err)
 			}
@@ -311,7 +311,7 @@ func TestSegmentModeDetection(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			code, err := NewTextQrBuilder(tc.text).Build()
+			code, err := NewTextBuilder(tc.text).Build()
 			if err != nil {
 				t.Fatalf("build: %v", err)
 			}
@@ -338,7 +338,7 @@ func TestSegmentModeDetection(t *testing.T) {
 
 func TestBuildErrors(t *testing.T) {
 	t.Run("invalid_utf8", func(t *testing.T) {
-		_, err := NewTextQrBuilder(string([]byte{0xff, 0xfe, 0xfd})).Build()
+		_, err := NewTextBuilder(string([]byte{0xff, 0xfe, 0xfd})).Build()
 		if err != spec.ErrInvalidUTF8Text {
 			t.Fatalf("want ErrInvalidUTF8Text, got %v", err)
 		}
@@ -347,8 +347,8 @@ func TestBuildErrors(t *testing.T) {
 	t.Run("data_too_long", func(t *testing.T) {
 		// Beyond version-40 capacity at the highest ECC level.
 		huge := strings.Repeat("A", 5000)
-		_, err := NewTextQrBuilder(huge).
-			SetErrorCorrectionLevel(QrCorrectionLevelHigh).
+		_, err := NewTextBuilder(huge).
+			SetErrorCorrectionLevel(CorrectionLevelHigh).
 			Build()
 		if err != spec.ErrDataTooLong {
 			t.Fatalf("want ErrDataTooLong, got %v", err)
@@ -367,8 +367,8 @@ func TestE2E_ECIDisabledBytesPreserved(t *testing.T) {
 	const payload = "Mañana café ñoño €5"
 	want := []byte(payload)
 
-	path := buildPNG(t, NewTextQrBuilder(payload).
-		SetTextECIPolicy(QrTextECIPolicyDisabled))
+	path := buildPNG(t, NewTextBuilder(payload).
+		SetTextECIPolicy(TextECIPolicyDisabled))
 
 	// With ECI disabled the decoder may not know the charset, but the raw
 	// byte segment must still equal the original UTF-8 bytes.

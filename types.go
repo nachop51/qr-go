@@ -1,46 +1,46 @@
 package qr
 
 import (
-	"nachop51/qr/internal/spec"
+	"github.com/nachop51/qr-go/internal/spec"
 )
 
-type QrDataKind int
+type DataKind int
 
 const (
-	QrDataKindText QrDataKind = iota
-	QrDataKindBinary
+	DataKindText DataKind = iota
+	DataKindBinary
 )
 
-type QrTextECIPolicy int
+type TextECIPolicy int
 
 const (
-	QrTextECIPolicyAuto QrTextECIPolicy = iota
-	QrTextECIPolicyDisabled
+	TextECIPolicyAuto TextECIPolicy = iota
+	TextECIPolicyDisabled
 )
 
-type QrCorrectionLevel struct {
+type CorrectionLevel struct {
 	level int
 	value int
 }
 
 var (
-	QrCorrectionLevelLow      = QrCorrectionLevel{level: 0, value: 0b01}
-	QrCorrectionLevelMedium   = QrCorrectionLevel{level: 1, value: 0b00}
-	QrCorrectionLevelQuartile = QrCorrectionLevel{level: 2, value: 0b11}
-	QrCorrectionLevelHigh     = QrCorrectionLevel{level: 3, value: 0b10}
+	CorrectionLevelLow      = CorrectionLevel{level: 0, value: 0b01}
+	CorrectionLevelMedium   = CorrectionLevel{level: 1, value: 0b00}
+	CorrectionLevelQuartile = CorrectionLevel{level: 2, value: 0b11}
+	CorrectionLevelHigh     = CorrectionLevel{level: 3, value: 0b10}
 )
 
-type QrColor int
+type Color int
 
 const (
-	QrWhite QrColor = iota
-	QrBlack
+	White Color = iota
+	Black
 )
 
-type QrPoint struct {
+type Point struct {
 	x         int
 	y         int
-	col       QrColor
+	col       Color
 	protected bool
 	drawn     bool
 }

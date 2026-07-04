@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"nachop51/qr"
-	"nachop51/qr/render/png"
+	"github.com/nachop51/qr-go"
+	"github.com/nachop51/qr-go/render/png"
 )
 
 func main() {
@@ -14,8 +14,8 @@ func main() {
 		text = os.Args[1]
 	}
 
-	code, err := qr.NewTextQrBuilder(text).
-		SetErrorCorrectionLevel(qr.QrCorrectionLevelHigh).
+	code, err := qr.NewTextBuilder(text).
+		SetErrorCorrectionLevel(qr.CorrectionLevelHigh).
 		SetRenderer(png.New()).
 		Build()
 	if err != nil {

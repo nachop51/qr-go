@@ -1,8 +1,8 @@
 package qr
 
 import (
+	"github.com/nachop51/qr-go/internal/matrix"
 	"math"
-	"nachop51/qr/internal/matrix"
 )
 
 func maskCondition(mask, x, y int) bool {
@@ -186,7 +186,7 @@ func maskPenalty4(m *matrix.Matrix) int {
 	return min(prevPenalty, nextPenalty)
 }
 
-func maskPenalty(m *matrix.Matrix, version, mask int, ec QrCorrectionLevel) int {
+func maskPenalty(m *matrix.Matrix, version, mask int, ec CorrectionLevel) int {
 	placeMetadata(m, version, mask, ec)
 
 	score := maskPenalty1(m) + maskPenalty2(m) + maskPenalty3(m) + maskPenalty4(m)
@@ -194,7 +194,7 @@ func maskPenalty(m *matrix.Matrix, version, mask int, ec QrCorrectionLevel) int 
 	return score
 }
 
-func bestMask(m *matrix.Matrix, version int, ec QrCorrectionLevel) int {
+func bestMask(m *matrix.Matrix, version int, ec CorrectionLevel) int {
 	best, bestScore := 0, math.MaxInt
 
 	for mask := range 8 {

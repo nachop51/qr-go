@@ -3,14 +3,14 @@ package qr
 import (
 	"unicode/utf8"
 
-	"nachop51/qr/internal/matrix"
-	"nachop51/qr/internal/spec"
-	"nachop51/qr/render"
-	"nachop51/qr/render/terminal"
+	"github.com/nachop51/qr-go/internal/matrix"
+	"github.com/nachop51/qr-go/internal/spec"
+	"github.com/nachop51/qr-go/render"
+	"github.com/nachop51/qr-go/render/terminal"
 )
 
-type QrCode struct {
-	ErrorCorrectionLevel QrCorrectionLevel
+type Code struct {
+	ErrorCorrectionLevel CorrectionLevel
 	Version              int
 	Mask                 int
 	IsECI                bool
@@ -19,50 +19,50 @@ type QrCode struct {
 	renderer             render.Renderer
 }
 
-type QrBuilder struct {
+type Builder struct {
 	data                 []byte
-	dataKind             QrDataKind
-	textECIPolicy        QrTextECIPolicy
-	errorCorrectionLevel QrCorrectionLevel
+	dataKind             DataKind
+	textECIPolicy        TextECIPolicy
+	errorCorrectionLevel CorrectionLevel
 	renderer             render.Renderer
 }
 
-func NewTextQrBuilder(text string) *QrBuilder {
-	return newQrBuilder([]byte(text), QrDataKindText)
+func NewTextBuilder(text string) *Builder {
+	return newBuilder([]byte(text), DataKindText)
 }
 
-func NewBinaryQrBuilder(data []byte) *QrBuilder {
-	return newQrBuilder(data, QrDataKindBinary)
+func NewBinaryBuilder(data []byte) *Builder {
+	return newBuilder(data, DataKindBinary)
 }
 
-func newQrBuilder(data []byte, inputKind QrDataKind) *QrBuilder {
-	return &QrBuilder{
+func newBuilder(data []byte, inputKind DataKind) *Builder {
+	return &Builder{
 		data:                 append([]byte(nil), data...),
 		dataKind:             inputKind,
-		errorCorrectionLevel: QrCorrectionLevelMedium,
+		errorCorrectionLevel: CorrectionLevelMedium,
 		renderer:             terminal.New(), // default: lightweight terminal output
 	}
 }
 
-func (b *QrBuilder) SetErrorCorrectionLevel(level QrCorrectionLevel) *QrBuilder {
+func (b *Builder) SetErrorCorrectionLevel(level CorrectionLevel) *Builder {
 	b.errorCorrectionLevel = level
 	return b
 }
 
-func (b *QrBuilder) SetTextECIPolicy(policy QrTextECIPolicy) *QrBuilder {
+func (b *Builder) SetTextECIPolicy(policy TextECIPolicy) *Builder {
 	b.textECIPolicy = policy
 	return b
 }
 
-func (b *QrBuilder) SetRenderer(r render.Renderer) *QrBuilder { b.renderer = r; return b }
+func (b *Builder) SetRenderer(r render.Renderer) *Builder { b.renderer = r; return b }
 
-func (b *QrBuilder) Build() (*QrCode, error) {
+func (b *Builder) Build() (*Code, error) {
 	var isECI bool = false
 	var segments []Segment
 	var err error
 
 	switch b.dataKind {
-	case QrDataKindText:
+	case DataKindText:
 		if !utf8.Valid(b.data) {
 			return nil, spec.ErrInvalidUTF8Text
 		}
@@ -72,7 +72,7 @@ func (b *QrBuilder) Build() (*QrCode, error) {
 		if err != nil {
 			return nil, err
 		}
-	case QrDataKindBinary:
+	case DataKindBinary:
 		segments = []Segment{{mode: EncodingModeByte, data: b.data}}
 		isECI = false
 	default:
@@ -85,7 +85,7 @@ func (b *QrBuilder) Build() (*QrCode, error) {
 		return nil, err
 	}
 
-	qrObj := &QrCode{
+	qrObj := &Code{
 		Segments:             segments,
 		Version:              version,
 		ErrorCorrectionLevel: b.errorCorrectionLevel,

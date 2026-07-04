@@ -1,12 +1,12 @@
 package png
 
 import (
+	"github.com/nachop51/qr-go/render"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/png"
 	"io"
-	"nachop51/qr/render"
 	"os"
 )
 
