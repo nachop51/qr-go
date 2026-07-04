@@ -1,7 +1,3 @@
-//go:build haspng
-
-// Decode round-trips need an image renderer. Gated behind -tags haspng until
-// render/png exists; then update the render helper to render/png and drop this.
 package qr
 
 import (
@@ -19,7 +15,7 @@ import (
 	"github.com/makiuchi-d/gozxing/qrcode"
 
 	"nachop51/qr/internal/spec"
-	"nachop51/qr/render"
+	"nachop51/qr/render/png"
 )
 
 // ---------------------------------------------------------------------------
@@ -34,6 +30,8 @@ import (
 func renderPNG(t *testing.T, code *QrCode, scale int) string {
 	t.Helper()
 
+	const quiet = 4
+
 	path := filepath.Join(t.TempDir(), "qr.png")
 	f, err := os.Create(path)
 	if err != nil {
@@ -41,8 +39,10 @@ func renderPNG(t *testing.T, code *QrCode, scale int) string {
 	}
 	defer f.Close()
 
-	if err := render.PNG(f, code, render.Options{Scale: scale}); err != nil {
-		t.Fatalf("render.PNG failed: %v", err)
+	size := (code.Size() + 2*quiet) * scale
+	r := png.New().Writer(f).Quiet(quiet).Width(size).Height(size)
+	if err := r.Render(code); err != nil {
+		t.Fatalf("png.Render failed: %v", err)
 	}
 	return path
 }

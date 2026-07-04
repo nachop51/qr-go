@@ -1,7 +1,3 @@
-//go:build haspng
-
-// Decode round-trip needs an image renderer. Gated behind -tags haspng until
-// render/png exists; then update the render call to render/png and drop this.
 package qr
 
 import (
@@ -13,13 +9,17 @@ import (
 	"github.com/makiuchi-d/gozxing"
 	"github.com/makiuchi-d/gozxing/qrcode"
 
-	"nachop51/qr/render"
+	"nachop51/qr/render/png"
 )
 
 func TestBinaryRoundTrip(t *testing.T) {
 	const want = "HELLO WORLD"
 
-	qr, err := NewBinaryQrBuilder([]byte(want)).Build()
+	var buf bytes.Buffer
+
+	qr, err := NewBinaryQrBuilder([]byte(want)).
+		SetRenderer(png.New().Writer(&buf)).
+		Build()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,8 +28,7 @@ func TestBinaryRoundTrip(t *testing.T) {
 	cw := buildCodewords(qr.Segments, qr.Version, qr.ErrorCorrectionLevel, qr.IsECI)
 	t.Logf("codewords (%d): % X", len(cw), cw)
 
-	var buf bytes.Buffer
-	if err := render.PNG(&buf, qr, render.Options{Scale: 8}); err != nil {
+	if err := qr.Render(); err != nil {
 		t.Fatal(err)
 	}
 

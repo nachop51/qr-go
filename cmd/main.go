@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"nachop51/qr"
+	"nachop51/qr/render/png"
 )
 
 func main() {
@@ -15,7 +16,8 @@ func main() {
 
 	code, err := qr.NewTextQrBuilder(text).
 		SetErrorCorrectionLevel(qr.QrCorrectionLevelHigh).
-		Build() // default renderer = terminal
+		SetRenderer(png.New()).
+		Build()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "build:", err)
 		os.Exit(1)

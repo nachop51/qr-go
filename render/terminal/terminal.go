@@ -33,15 +33,25 @@ func (t Terminal) Quiet(n int) Terminal        { t.quiet = n; return t }
 func (t Terminal) Render(g render.Grid) error {
 	var sb strings.Builder
 
-	drawQuiet := func(s string) {
-		for range t.quiet {
+	quiet := max(t.quiet, 0)
+	total := g.Size() + 2*quiet
+
+	writeModules := func(s string, n int) {
+		for range n {
 			sb.WriteString(s)
 		}
 	}
-	drawQuiet("\n")
+	writeQuietRow := func() {
+		writeModules(t.light, total)
+		sb.WriteString("\n")
+	}
+
+	for range quiet {
+		writeQuietRow()
+	}
 
 	for y := range g.Size() {
-		drawQuiet("  ")
+		writeModules(t.light, quiet)
 		for x := range g.Size() {
 			if g.IsDark(x, y) {
 				sb.WriteString(t.dark)
@@ -49,10 +59,13 @@ func (t Terminal) Render(g render.Grid) error {
 				sb.WriteString(t.light)
 			}
 		}
+		writeModules(t.light, quiet)
 		sb.WriteString("\n")
 	}
 
-	drawQuiet("\n")
+	for range quiet {
+		writeQuietRow()
+	}
 
 	_, err := t.w.Write([]byte(sb.String()))
 	return err
