@@ -26,7 +26,10 @@ go get github.com/nachop51/qr-go
   `CorrectionLevelQuartile`, `CorrectionLevelHigh`
 - Optional automatic ECI when text needs non-ASCII byte segments
   (disable with `SetTextECIPolicy(qr.TextECIPolicyDisabled)`)
-- Pluggable renderers: terminal (default), PNG, SVG
+- Pluggable renderers: terminal (default, compact half-block), PNG, SVG
+- Centered logo overlay (PNG and SVG output) from any image format — PNG, JPEG,
+  GIF, WebP, or SVG
+- Content helpers for Wi-Fi, contacts, calendar events, geo, tel, SMS, and email
 
 ## Quick start
 
@@ -85,9 +88,51 @@ if err := code.Render(); err != nil {
 }
 ```
 
-PNG options: `Writer(io.Writer)`, `Width(int)`, `Height(int)`, `Quiet(int)`,
-`Dark(color.Color)`, `White(color.Color)`. If no writer is set, it writes to
-`test.png` in the working directory.
+PNG options: `Writer(io.Writer)`, `Filename(string)`, `Width(int)`,
+`Height(int)`, `Quiet(int)`, `Dark(color.Color)`, `White(color.Color)`,
+`Logo(image.Image)`, `LogoModules(int)`. If no writer is set, it writes to the
+file named by `Filename` (default `image.png`).
+
+#### Logo overlay
+
+Embed a centered logo with `Logo`. Its span defaults to `size/5` modules — safe
+at any EC level — and can be widened with `LogoModules`:
+
+```go
+builder.SetErrorCorrectionLevel(qr.CorrectionLevelHigh). // recommended with a logo
+	SetRenderer(png.New().Logo(myLogo))               // default span: size/5
+// or a wider span:
+png.New().Logo(myLogo).LogoModules(11)
+```
+
+The logo hides the modules it covers, so error correction has to recover them.
+Rough per-level ceilings: `High` → size/3, `Quartile` → size/4, `Medium` →
+size/5 (see `Code.MaxLogoModules`). A span beyond what the code's EC level can
+recover is **capped** to that maximum so the result still scans; the adjustment
+is reported via `render.Warnf` (which you can silence or redirect).
+
+The SVG renderer supports the same `Logo` / `LogoModules` API, embedding the
+image as a base64 data URI:
+
+```go
+png.New().Logo(myLogo).LogoModules(11)  // raster output
+svg.New().Logo(myLogo)                  // vector output, default span
+```
+
+Both renderers take the logo as an `image.Image`. To load one from a file of any
+supported format — PNG, JPEG, GIF, WebP, or **SVG** — use the `logo` package; it
+detects the format and rasterizes SVG for you:
+
+```go
+import "github.com/nachop51/qr-go/logo"
+
+f, _ := os.Open("brand.svg") // or .png / .jpg / .webp / .gif
+myLogo, err := logo.Decode(f)
+if err != nil {
+	log.Fatal(err)
+}
+png.New().Logo(myLogo)
+```
 
 ### SVG
 
@@ -98,18 +143,28 @@ builder.SetRenderer(svg.New().Writer(f).Module(8).Dark("#111111").Light("#ffffff
 ```
 
 SVG options: `Writer(io.Writer)`, `Module(int)` (module size in px),
-`Quiet(int)`, `Dark(string)`, `Light(string)`. Defaults to `os.Stdout`.
+`Quiet(int)`, `Dark(string)`, `Light(string)`, `Logo(image.Image)`,
+`LogoModules(int)`. Defaults to `os.Stdout`.
 
 ### Terminal (default)
 
 ```go
 import "github.com/nachop51/qr-go/render/terminal"
 
-builder.SetRenderer(terminal.New().Quiet(2))
+builder.SetRenderer(terminal.New().Invert())
 ```
 
-Terminal options: `Writer(io.Writer)`, `Quiet(int)`, `Dark(string)`,
-`Light(string)`. Defaults to `os.Stdout` with block characters.
+The terminal renderer defaults to a compact **half-block** style (Unicode
+`▀ ▄ █`), which packs two module rows into each character cell so every module
+is roughly square. Options:
+
+- `Writer(io.Writer)`, `Quiet(int)` — output sink and quiet-zone size.
+- `Invert()` — swap dark/light. Use this on a dark-background terminal so the
+  code renders with the correct contrast for scanning.
+- `Block()` — the classic full-width block style (two cells per module).
+- `Dark(string)`, `Light(string)` — custom fill strings; these imply `Block()`.
+
+Defaults to `os.Stdout`.
 
 ## Binary data
 
@@ -129,6 +184,40 @@ segments, ECI is enabled automatically. Disable it with:
 ```go
 builder.SetTextECIPolicy(qr.TextECIPolicyDisabled)
 ```
+
+## Content helpers
+
+The `content` package builds the specially formatted payloads that scanners
+turn into actions — connect to Wi-Fi, save a contact, add a calendar event.
+Each helper returns a plain string for `NewTextBuilder`:
+
+```go
+import (
+	qr "github.com/nachop51/qr-go"
+	"github.com/nachop51/qr-go/content"
+)
+
+// Join a Wi-Fi network on scan.
+code, _ := qr.NewTextBuilder(
+	content.WiFi{SSID: "CoffeeShop", Pass: "latte123"}.String(),
+).Build()
+
+// A contact card.
+content.VCard{First: "Jane", Last: "Doe", Email: "jane@acme.test"}.String()
+
+// A calendar event.
+content.Event{Summary: "Launch", Start: start, End: end}.String()
+
+// One-liners.
+content.Tel("+15551234567")
+content.SMS("+15551234567", "call me")
+content.Geo(48.8584, 2.2945)
+content.Email("a@b.test", "Subject", "Body")
+content.URL("https://example.com")
+```
+
+`WiFi`, `VCard`, and `Event` implement `fmt.Stringer`; the rest are functions.
+Reserved characters are escaped for you.
 
 ## Inspecting the result
 
@@ -155,6 +244,8 @@ go run ./cmd "HELLO WORLD"
 ## Project layout
 
 - package root (`*.go`) — QR encoding library and public API
+- `content/` — payload helpers (Wi-Fi, vCard, calendar, geo, tel, SMS, email)
+- `logo/` — decode a logo from any image format (PNG/JPEG/GIF/WebP/SVG)
 - `internal/spec` — QR spec tables (capacity, ECC, alignment, format info)
 - `internal/coding` — bit stream and Reed–Solomon error correction
 - `internal/matrix` — the module grid

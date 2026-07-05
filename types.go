@@ -30,21 +30,6 @@ var (
 	CorrectionLevelHigh     = CorrectionLevel{level: 3, value: 0b10}
 )
 
-type Color int
-
-const (
-	White Color = iota
-	Black
-)
-
-type Point struct {
-	x         int
-	y         int
-	col       Color
-	protected bool
-	drawn     bool
-}
-
 type EncodingMode = spec.EncodingMode
 
 const (
