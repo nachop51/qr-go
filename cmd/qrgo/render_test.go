@@ -1,0 +1,197 @@
+package main
+
+import (
+	"bytes"
+	"image"
+	"image/color"
+	_ "image/png"
+	"testing"
+
+	"github.com/makiuchi-d/gozxing"
+	"github.com/makiuchi-d/gozxing/qrcode"
+
+	qr "github.com/nachop51/qr-go"
+	"github.com/nachop51/qr-go/render/png"
+	"github.com/nachop51/qr-go/render/svg"
+	"github.com/nachop51/qr-go/render/terminal"
+)
+
+func TestResolveFormat(t *testing.T) {
+	cases := []struct {
+		name    string
+		flag    string
+		output  string
+		want    string
+		wantErr bool
+	}{
+		{name: "default terminal", want: "terminal"},
+		{name: "infer png", output: "out.png", want: "png"},
+		{name: "infer svg", output: "diagram.SVG", want: "svg"},
+		{name: "unknown ext is terminal", output: "out.txt", want: "terminal"},
+		{name: "flag wins over ext", flag: "svg", output: "out.png", want: "svg"},
+		{name: "flag alias term", flag: "term", want: "terminal"},
+		{name: "invalid flag", flag: "pdf", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := resolveFormat(tc.flag, tc.output)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("want error, got %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("want %q got %q", tc.want, got)
+			}
+		})
+	}
+}
+
+func TestParseHexColor(t *testing.T) {
+	cases := []struct {
+		in      string
+		want    color.RGBA
+		wantErr bool
+	}{
+		{in: "#000000", want: color.RGBA{A: 0xff}},
+		{in: "#ffffff", want: color.RGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}},
+		{in: "ff0000", want: color.RGBA{R: 0xff, A: 0xff}},
+		{in: "#0f0", want: color.RGBA{G: 0xff, A: 0xff}},
+		{in: "#11223344", want: color.RGBA{R: 0x11, G: 0x22, B: 0x33, A: 0x44}},
+		{in: "red", wantErr: true},
+		{in: "#12345", wantErr: true},
+		{in: "#gggggg", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			got, err := parseHexColor(tc.in)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("want error for %q, got %v", tc.in, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("want %+v got %+v", tc.want, got)
+			}
+		})
+	}
+}
+
+func TestParseECCRoundTrip(t *testing.T) {
+	for _, in := range []string{"L", "m", "Q", "high"} {
+		level, err := parseECC(in)
+		if err != nil {
+			t.Fatalf("parseECC(%q): %v", in, err)
+		}
+		if name := eccName(level); name == "?" {
+			t.Fatalf("eccName did not recognise the level from %q", in)
+		}
+	}
+	if _, err := parseECC("Z"); err == nil {
+		t.Fatalf("want error for invalid level")
+	}
+}
+
+func TestBuildRendererTypes(t *testing.T) {
+	var buf bytes.Buffer
+	base := options{dark: "#000000", light: "#ffffff", width: 800, height: 800, scale: 10, quiet: -1}
+
+	term, err := buildRenderer("terminal", &base, &buf)
+	if err != nil {
+		t.Fatalf("terminal: %v", err)
+	}
+	if _, ok := term.(terminal.Terminal); !ok {
+		t.Fatalf("terminal: got %T", term)
+	}
+
+	p, err := buildRenderer("png", &base, &buf)
+	if err != nil {
+		t.Fatalf("png: %v", err)
+	}
+	if _, ok := p.(png.PNG); !ok {
+		t.Fatalf("png: got %T", p)
+	}
+
+	s, err := buildRenderer("svg", &base, &buf)
+	if err != nil {
+		t.Fatalf("svg: %v", err)
+	}
+	if _, ok := s.(svg.SVG); !ok {
+		t.Fatalf("svg: got %T", s)
+	}
+}
+
+func TestBuildRendererTerminalRejectsLogo(t *testing.T) {
+	var buf bytes.Buffer
+	o := options{logo: "logo.png", quiet: -1}
+	if _, err := buildRenderer("terminal", &o, &buf); err == nil {
+		t.Fatalf("want error: terminal renderer cannot take a logo")
+	}
+}
+
+func TestBuildRendererInvalidColor(t *testing.T) {
+	var buf bytes.Buffer
+	o := options{dark: "notacolor", light: "#ffffff", width: 800, height: 800, quiet: -1}
+	if _, err := buildRenderer("png", &o, &buf); err == nil {
+		t.Fatalf("want error for invalid --dark color")
+	}
+}
+
+// TestPNGRoundTrip renders a URL through the CLI's own renderer pipeline and
+// decodes the PNG back with gozxing, proving the wiring produces a scannable
+// code.
+func TestPNGRoundTrip(t *testing.T) {
+	const payload = "https://example.com/qrgo"
+
+	var buf bytes.Buffer
+	o := options{dark: "#000000", light: "#ffffff", size: 512, width: 800, height: 800, scale: 10, quiet: -1}
+	renderer, err := buildRenderer("png", &o, &buf)
+	if err != nil {
+		t.Fatalf("buildRenderer: %v", err)
+	}
+
+	code, err := qr.NewTextBuilder(payload).
+		SetErrorCorrectionLevel(qr.CorrectionLevelHigh).
+		SetRenderer(renderer).
+		Build()
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if err := code.Render(); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	if got := decodePNG(t, buf.Bytes()); got != payload {
+		t.Fatalf("round-trip mismatch: want %q got %q", payload, got)
+	}
+}
+
+func decodePNG(t *testing.T, data []byte) string {
+	t.Helper()
+
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("decode png: %v", err)
+	}
+	bmp, err := gozxing.NewBinaryBitmapFromImage(img)
+	if err != nil {
+		t.Fatalf("bitmap: %v", err)
+	}
+	hints := map[gozxing.DecodeHintType]any{
+		gozxing.DecodeHintType_PURE_BARCODE: true,
+		gozxing.DecodeHintType_TRY_HARDER:   true,
+	}
+	res, err := qrcode.NewQRCodeReader().Decode(bmp, hints)
+	if err != nil {
+		t.Fatalf("qr decode failed: %v", err)
+	}
+	return res.GetText()
+}

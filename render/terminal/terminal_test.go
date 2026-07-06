@@ -83,6 +83,25 @@ func TestTerminalInvert(t *testing.T) {
 	}
 }
 
+// Regression: half-block packs two module rows per text row, so an odd total
+// (QR sizes always are) leaves a trailing filler row. Inverting must not turn
+// that filler into ink — otherwise the bottom quiet zone renders a module
+// taller than the top. With size 3 + quiet 1 the total is 5, and the last text
+// row must be all upper-half glyphs (dark bottom-quiet over a light filler).
+func TestTerminalInvertFillerStaysLight(t *testing.T) {
+	var buf bytes.Buffer
+	if err := New().Writer(&buf).Quiet(1).Invert().Render(fakeGrid{n: 3}); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	last := lines[len(lines)-1]
+	want := strings.Repeat(string(glyphUpper), 3+2*1)
+	if last != want {
+		t.Fatalf("inverted filler leaked ink into the quiet zone\n last: %q\n want: %q\n full:\n%s",
+			last, want, buf.String())
+	}
+}
+
 func TestTerminal_renderBlock(t *testing.T) {
 	tests := []struct {
 		name string

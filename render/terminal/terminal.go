@@ -77,8 +77,18 @@ func (t Terminal) Render(g render.Grid) error {
 // as light. Invert flips the result.
 func (t Terminal) ink(g render.Grid, x, y int) bool {
 	q := max(t.quiet, 0)
-	mx, my := x-q, y-q
+	total := g.Size() + 2*q
 
+	// Anything past the padded symbol is terminal background and must never be
+	// inverted. This matters for the trailing half-block filler row that appears
+	// when total is odd (QR sizes always are): inverting it would draw an extra
+	// dark module below the quiet zone, making the bottom border a module taller
+	// than the top.
+	if x < 0 || y < 0 || x >= total || y >= total {
+		return false
+	}
+
+	mx, my := x-q, y-q
 	dark := mx >= 0 && my >= 0 && mx < g.Size() && my < g.Size() && g.IsDark(mx, my)
 	return dark != t.invert
 }

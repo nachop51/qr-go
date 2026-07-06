@@ -233,13 +233,44 @@ code.Size()               // modules per side
 code.IsDark(x, y)         // module colour at (x, y)
 ```
 
-## Command-line demo
+## Command-line tool
 
-A small playground lives in `cmd/`:
+`qrgo` exposes the whole library from the terminal. Install it, or run it from
+the repo:
 
 ```sh
-go run ./cmd "HELLO WORLD"
+go install github.com/nachop51/qr-go/cmd/qrgo@latest
+# or, in a checkout:
+go run ./cmd/qrgo "HELLO WORLD"
 ```
+
+With no subcommand the arguments are encoded as plain text and printed to the
+terminal. Structured content types are subcommands — most take their value as a
+positional argument, while multi-field types (`wifi`, `vcard`, `event`) use
+flags:
+
+```sh
+qrgo "HELLO WORLD"                                   # terminal (default)
+qrgo url https://example.com -o code.png             # PNG (format from extension)
+qrgo tel +15551234567 -f svg > call.svg              # SVG to stdout
+qrgo geo 48.8584 2.2945                              # two positionals
+qrgo wifi --ssid CoffeeShop --pass latte123 --ecc H -o wifi.svg
+qrgo vcard --name "Jane Doe" --email jane@acme.test -o card.png
+qrgo event --summary Launch --start "2026-07-05 14:30" -f svg > event.svg
+echo "https://example.com" | qrgo -o code.png        # content from stdin
+```
+
+The output format is inferred from `-o`'s extension (`.png`/`.svg`) or set with
+`-f/--format`; with no `-o` the code goes to stdout.
+
+Render/output flags apply to every command: `-e/--ecc {L,M,Q,H}`,
+`-q/--quiet <modules>`, `--dark`/`--light` colors (hex for PNG, any CSS color for
+SVG), `--size`/`--width`/`--height` (PNG px) and `--scale` (SVG module px),
+`--logo <file>` + `--logo-modules` for a centered logo (PNG/SVG),
+`--invert`/`--block` for the terminal, `--no-eci`, and `-i/--info` to print the
+encoding outcome (version, mask, segments) to stdout. Run `qrgo --help` for the
+overview, `qrgo help <type>` (e.g. `qrgo help wifi`) for a type's own options,
+and `qrgo completion <shell>` for shell completion.
 
 ## Project layout
 
@@ -250,7 +281,7 @@ go run ./cmd "HELLO WORLD"
 - `internal/coding` — bit stream and Reed–Solomon error correction
 - `internal/matrix` — the module grid
 - `render/` — the renderer contract and the terminal / PNG / SVG renderers
-- `cmd/` — command-line example
+- `cmd/qrgo/` — the `qrgo` command-line tool
 
 ## License
 
