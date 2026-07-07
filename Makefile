@@ -21,7 +21,7 @@ wasm: ## Build the wasm module (stripped + wasm-opt if installed) and copy wasm_
 	GOOS=js GOARCH=wasm go build -trimpath -ldflags="-s -w" -o $(WASM_OUT) ./cmd/wasm
 	@if command -v wasm-opt >/dev/null; then \
 		echo "wasm-opt -Oz ($$(wasm-opt --version))"; \
-		wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int $(WASM_OUT) -o $(WASM_OUT); \
+		wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals $(WASM_OUT) -o $(WASM_OUT); \
 	else \
 		echo "wasm-opt not found (brew install binaryen), shipping unoptimized wasm"; \
 	fi
