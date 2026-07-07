@@ -8,7 +8,7 @@ import (
 	"github.com/nachop51/qr-go/render"
 )
 
-// fakeGrid satisfies render.Grid structurally — no import needed.
+// fakeGrid satisfies render.Grid structurally; no import needed.
 type fakeGrid struct{ n int }
 
 func (f fakeGrid) Size() int            { return f.n }
@@ -85,7 +85,7 @@ func TestTerminalInvert(t *testing.T) {
 
 // Regression: half-block packs two module rows per text row, so an odd total
 // (QR sizes always are) leaves a trailing filler row. Inverting must not turn
-// that filler into ink — otherwise the bottom quiet zone renders a module
+// that filler into ink; otherwise the bottom quiet zone renders a module
 // taller than the top. With size 3 + quiet 1 the total is 5, and the last text
 // row must be all upper-half glyphs (dark bottom-quiet over a light filler).
 func TestTerminalInvertFillerStaysLight(t *testing.T) {
@@ -117,5 +117,30 @@ func TestTerminal_renderBlock(t *testing.T) {
 				t.Errorf("renderBlock() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// Compile-time check: Terminal satisfies the full renderer contract.
+var _ render.Renderer = New()
+
+// Bytes returns exactly what Render writes, in every style.
+func TestTerminalBytesMatchesRender(t *testing.T) {
+	g := fakeGrid{n: 3}
+	for name, cfg := range map[string]Terminal{
+		"half":   New().Quiet(1),
+		"block":  New().Quiet(1).Block(),
+		"invert": New().Quiet(1).Invert(),
+	} {
+		var buf bytes.Buffer
+		if err := cfg.Writer(&buf).Render(g); err != nil {
+			t.Fatalf("%s: Render: %v", name, err)
+		}
+		got, err := cfg.Bytes(g)
+		if err != nil {
+			t.Fatalf("%s: Bytes: %v", name, err)
+		}
+		if !bytes.Equal(got, buf.Bytes()) {
+			t.Errorf("%s: Bytes != Render output\nBytes:\n%s\nRender:\n%s", name, got, buf.Bytes())
+		}
 	}
 }

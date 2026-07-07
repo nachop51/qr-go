@@ -1,0 +1,10 @@
+{
+  "name": "qr-go-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun index.html",
+    "build": "bun build index.html --outdir dist --minify",
+    "typecheck": "bun x tsc --noEmit"
+  }
+}

@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-// Warnf reports non-fatal rendering adjustments — such as a logo span being
+// Warnf reports non-fatal rendering adjustments, such as a logo span being
 // capped to keep the code scannable. It defaults to writing to stderr; set it
 // to nil to silence it, or replace it to route the messages elsewhere.
 var Warnf = func(format string, args ...any) {

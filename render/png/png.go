@@ -1,6 +1,7 @@
 package png
 
 import (
+	"bytes"
 	"image"
 	"image/color"
 	"image/draw"
@@ -29,8 +30,8 @@ func New() PNG {
 	return PNG{filename: "image.png", dark: color.Black, white: color.White, quiet: 4, width: 800, height: 800}
 }
 
-// Logo overlays img centred on the code. Its span defaults to size/5 modules —
-// safe at any error-correction level — and can be changed with LogoModules. The
+// Logo overlays img centred on the code. Its span defaults to size/5 modules
+// (safe at any error-correction level) and can be changed with LogoModules. The
 // overlay covers whole modules snapped to the grid, so it never slices one.
 //
 // A logo hides the modules it covers; a span wider than the code's
@@ -97,7 +98,7 @@ func (p PNG) drawQuiet(img *image.RGBA) {
 	draw.Draw(img, img.Bounds(), &image.Uniform{C: p.white}, image.Point{}, draw.Src)
 }
 
-// buildImage renders the code — and optional logo — into an RGBA image.
+// buildImage renders the code (and optional logo) into an RGBA image.
 func (p PNG) buildImage(g render.Grid) *image.RGBA {
 	size := g.Size()
 	modules := size + 2*p.quiet
@@ -161,6 +162,15 @@ func (p PNG) drawLogo(img *image.RGBA, offX, offY, size, scale, mods int) {
 	cy := y0 + region/2
 	dst := image.Rect(cx-tw/2, cy-th/2, cx+tw/2, cy+th/2)
 	xdraw.CatmullRom.Scale(img, dst, p.logo, sb, xdraw.Over, nil)
+}
+
+// Bytes returns the rendered QR as an encoded PNG image.
+func (p PNG) Bytes(g render.Grid) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, p.buildImage(g)); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 func (p PNG) Render(g render.Grid) error {

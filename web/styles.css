@@ -1,0 +1,617 @@
+/* QR-GO studio: risograph print-shop look.
+   Two inks on paper: near-black + ultramarine, orange reserved for warnings.
+   Offset shadows = misregistration; crop marks on the preview ticket. */
+
+/* Departure Mono (OFL-1.1, Helena Zhang): pixel-grid mono, same visual
+   grammar as the QR modules. Self-hosted: no external requests. Single
+   weight; font-synthesis is disabled so browsers don't fake a bold. */
+@font-face {
+  font-family: "Departure Mono";
+  src: url("./fonts/DepartureMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --paper: #fafaf8;
+  --card: #ffffff;
+  --ink: #1a1a1e;
+  --blue: #2430e8;
+  --orange: #c53d05; /* AA contrast on paper at small sizes */
+  --muted: #6f6f78;
+  --line: 2px solid var(--ink);
+  --mono: "Departure Mono", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  /* One family everywhere; --body kept as a role alias for input/form text. */
+  --body: var(--mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.noscript {
+  margin: 0;
+  padding: 12px 24px;
+  font-family: var(--mono);
+  font-size: 13px;
+  background: var(--ink);
+  color: var(--paper);
+  text-align: center;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.5 var(--body);
+  -webkit-font-smoothing: antialiased;
+  font-synthesis: none;
+}
+
+/* --- masthead --- */
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 28px 24px 4px;
+}
+
+.wordmark {
+  display: block;
+  line-height: 0;
+}
+
+#wordmark rect {
+  opacity: 1;
+}
+
+body:not(.ready) #wordmark rect {
+  opacity: 0;
+}
+
+body.ready #wordmark rect {
+  animation: stamp 0.18s steps(1) both;
+  animation-delay: calc(var(--i) * 8ms);
+}
+
+@keyframes stamp {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.tagline {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.tagline strong {
+  color: var(--blue);
+}
+
+/* --- layout --- */
+
+.app {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 28px;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 24px;
+  align-items: start;
+}
+
+.controls {
+  display: grid;
+  gap: 24px;
+}
+
+.panel {
+  background: var(--card);
+  border: var(--line);
+  border-radius: 3px;
+  box-shadow: 5px 5px 0 var(--blue);
+  padding: 20px;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.eyebrow::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  background: var(--blue);
+}
+
+/* --- tabs --- */
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.tabs button {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 7px 10px;
+  background: var(--card);
+  border: var(--line);
+  border-radius: 2px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.tabs button:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 var(--blue);
+}
+
+.tabs button[aria-selected="true"] {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+/* --- fields --- */
+
+.field-row {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.field-row:last-child {
+  margin-bottom: 0;
+}
+
+.field-row.two {
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.field-row.check {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+label,
+legend {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+output {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.hint,
+.hint-inline {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--muted);
+  margin: 4px 0 0;
+}
+
+input[type="text"],
+input[type="url"],
+input[type="tel"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="datetime-local"],
+input[type="file"],
+textarea,
+select {
+  font: 14px/1.4 var(--body);
+  color: var(--ink);
+  background: var(--card);
+  border: var(--line);
+  border-radius: 2px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+textarea {
+  resize: vertical;
+}
+
+input[type="file"] {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+legend {
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.segmented label {
+  display: block;
+}
+
+.segmented input {
+  position: absolute;
+  opacity: 0;
+}
+
+.segmented span {
+  display: block;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 0;
+  border: var(--line);
+  margin-left: -2px;
+  cursor: pointer;
+  background: var(--card);
+}
+
+.segmented label:first-child span {
+  margin-left: 0;
+  border-radius: 2px 0 0 2px;
+}
+
+.segmented label:last-child span {
+  border-radius: 0 2px 2px 0;
+}
+
+.segmented input:checked + span {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.segmented input:focus-visible + span {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.swatch-field {
+  display: grid;
+  gap: 6px;
+}
+
+input[type="color"] {
+  inline-size: 100%;
+  block-size: 40px;
+  padding: 3px;
+  border: var(--line);
+  border-radius: 2px;
+  background: var(--card);
+  cursor: pointer;
+}
+
+input[type="range"] {
+  accent-color: var(--blue);
+  width: 100%;
+}
+
+.logo-extras {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.logo-extras.hidden {
+  display: none;
+}
+
+.link-btn {
+  justify-self: start;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--orange);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* --- output ticket --- */
+
+.output {
+  position: sticky;
+  top: 24px;
+  display: grid;
+  gap: 14px;
+}
+
+.ticket {
+  position: relative;
+  background: var(--card);
+  border: var(--line);
+  border-radius: 3px;
+  box-shadow: 7px 7px 0 var(--blue);
+  padding: 30px;
+}
+
+.ticket.printed .preview {
+  animation: reprint 0.25s ease-out;
+}
+
+@keyframes reprint {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.mark {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 0 solid var(--blue);
+}
+
+.mark.tl {
+  top: 8px;
+  left: 8px;
+  border-top-width: 2px;
+  border-left-width: 2px;
+}
+
+.mark.tr {
+  top: 8px;
+  right: 8px;
+  border-top-width: 2px;
+  border-right-width: 2px;
+}
+
+.mark.bl {
+  bottom: 8px;
+  left: 8px;
+  border-bottom-width: 2px;
+  border-left-width: 2px;
+}
+
+.mark.br {
+  bottom: 8px;
+  right: 8px;
+  border-bottom-width: 2px;
+  border-right-width: 2px;
+}
+
+.preview {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+}
+
+.preview svg {
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.empty {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: center;
+  margin: 0;
+  padding: 0 20px;
+}
+
+.empty.problem {
+  color: var(--orange);
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.spec {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  text-align: center;
+  min-height: 1em;
+}
+
+.warnings {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--orange);
+  text-align: center;
+  min-height: 1em;
+}
+
+.warnings:empty,
+.spec:empty {
+  display: none;
+}
+
+/* --- actions --- */
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 12px 8px;
+  border: var(--line);
+  border-radius: 2px;
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.btn.primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 var(--ink);
+}
+
+.btn:active:not(:disabled) {
+  transform: translate(0, 0);
+  box-shadow: none;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* --- payload --- */
+
+.payload {
+  border: 2px dashed var(--muted);
+  border-radius: 2px;
+  padding: 10px 12px;
+}
+
+.payload summary {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.payload pre {
+  margin: 10px 0 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--ink);
+}
+
+/* --- colophon --- */
+
+.colophon {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 8px 24px 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.colophon p {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.colophon .legal {
+  font-size: 10px;
+}
+
+.colophon a {
+  color: var(--blue);
+}
+
+/* --- responsive + motion --- */
+
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+
+  .output {
+    position: static;
+    order: -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.ready #wordmark rect {
+    animation: none;
+  }
+
+  .ticket.printed .preview {
+    animation: none;
+  }
+
+  .tabs button:hover,
+  .btn:hover:not(:disabled) {
+    transform: none;
+  }
+}

@@ -48,11 +48,28 @@ func TestSVGRender(t *testing.T) {
 	if !strings.Contains(out, `<rect width="10" height="10" fill="#ffffff"/>`) {
 		t.Fatalf("expected background rect, got: %s", out)
 	}
-	if !strings.Contains(out, `<rect x="2" y="2" width="2" height="2" fill="#000000"/>`) {
+	if !strings.Contains(out, `<path fill="#000000" d="`) {
+		t.Fatalf("expected dark modules path, got: %s", out)
+	}
+	if !strings.Contains(out, `M2 2h2v2h-2z`) {
 		t.Fatalf("expected dark module at first quiet-zone offset, got: %s", out)
 	}
-	if got := strings.Count(out, `fill="#000000"`); got != 5 {
-		t.Fatalf("expected 5 dark modules, got %d: %s", got, out)
+	// The 3x3 checkerboard has 5 dark modules, none adjacent: 5 path commands.
+	if got := strings.Count(out, "z"); got != 5 {
+		t.Fatalf("expected 5 dark module runs, got %d: %s", got, out)
+	}
+}
+
+// Horizontally adjacent dark modules merge into a single path command per row.
+func TestSVGRunLength(t *testing.T) {
+	var buf bytes.Buffer
+	if err := New().Writer(&buf).Quiet(0).Module(1).Render(budgetGrid{n: 3}); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, `d="M0 0h3v1h-3zM0 1h3v1h-3zM0 2h3v1h-3z"`) {
+		t.Fatalf("expected one merged run per all-dark row, got: %s", out)
 	}
 }
 
@@ -91,5 +108,31 @@ func TestSVGLogoCapped(t *testing.T) {
 	}
 	if warns != 1 {
 		t.Fatalf("expected 1 cap warning, got %d", warns)
+	}
+}
+
+// Compile-time check: SVG satisfies the full renderer contract.
+var _ render.Renderer = New()
+
+// Bytes returns exactly what Render writes, with and without a logo.
+func TestSVGBytesMatchesRender(t *testing.T) {
+	for name, tc := range map[string]struct {
+		cfg SVG
+		g   render.Grid
+	}{
+		"plain": {New().Quiet(1).Module(2), fakeGrid{n: 3}},
+		"logo":  {New().Quiet(1).Module(4).Logo(solidLogo(8)), budgetGrid{n: 21, budget: 7}},
+	} {
+		var buf bytes.Buffer
+		if err := tc.cfg.Writer(&buf).Render(tc.g); err != nil {
+			t.Fatalf("%s: Render: %v", name, err)
+		}
+		got, err := tc.cfg.Bytes(tc.g)
+		if err != nil {
+			t.Fatalf("%s: Bytes: %v", name, err)
+		}
+		if !bytes.Equal(got, buf.Bytes()) {
+			t.Errorf("%s: Bytes != Render output\nBytes:\n%s\nRender:\n%s", name, got, buf.Bytes())
+		}
 	}
 }

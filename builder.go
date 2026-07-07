@@ -40,7 +40,7 @@ func newBuilder(data []byte, inputKind DataKind) *Builder {
 		data:                 append([]byte(nil), data...),
 		dataKind:             inputKind,
 		errorCorrectionLevel: CorrectionLevelMedium,
-		renderer:             terminal.New(), // default: lightweight terminal output
+		renderer:             terminal.New(),
 	}
 }
 

@@ -1,5 +1,5 @@
 // Package content builds the specially-formatted payload strings that QR code
-// scanners recognise as actionable content — Wi-Fi networks, contact cards,
+// scanners recognise as actionable content: Wi-Fi networks, contact cards,
 // calendar events, phone numbers, and so on.
 //
 // Every helper returns a plain string ready to hand to the encoder:

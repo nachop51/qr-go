@@ -27,7 +27,7 @@ go get github.com/nachop51/qr-go
 - Optional automatic ECI when text needs non-ASCII byte segments
   (disable with `SetTextECIPolicy(qr.TextECIPolicyDisabled)`)
 - Pluggable renderers: terminal (default, compact half-block), PNG, SVG
-- Centered logo overlay (PNG and SVG output) from any image format — PNG, JPEG,
+- Centered logo overlay (PNG and SVG output) from any image format: PNG, JPEG,
   GIF, WebP, or SVG
 - Content helpers for Wi-Fi, contacts, calendar events, geo, tel, SMS, and email
 
@@ -95,8 +95,8 @@ file named by `Filename` (default `image.png`).
 
 #### Logo overlay
 
-Embed a centered logo with `Logo`. Its span defaults to `size/5` modules — safe
-at any EC level — and can be widened with `LogoModules`:
+Embed a centered logo with `Logo`. Its span defaults to `size/5` modules, safe
+at any EC level. And can be widened with `LogoModules`:
 
 ```go
 builder.SetErrorCorrectionLevel(qr.CorrectionLevelHigh). // recommended with a logo
@@ -120,7 +120,7 @@ svg.New().Logo(myLogo)                  // vector output, default span
 ```
 
 Both renderers take the logo as an `image.Image`. To load one from a file of any
-supported format — PNG, JPEG, GIF, WebP, or **SVG** — use the `logo` package; it
+supported formats: PNG, JPEG, GIF, WebP, or **SVG**. Use the `logo` package; it
 detects the format and rasterizes SVG for you:
 
 ```go
@@ -158,11 +158,11 @@ The terminal renderer defaults to a compact **half-block** style (Unicode
 `▀ ▄ █`), which packs two module rows into each character cell so every module
 is roughly square. Options:
 
-- `Writer(io.Writer)`, `Quiet(int)` — output sink and quiet-zone size.
-- `Invert()` — swap dark/light. Use this on a dark-background terminal so the
+- `Writer(io.Writer)`, `Quiet(int)`: output sink and quiet-zone size.
+- `Invert()`: swap dark/light. Use this on a dark-background terminal so the
   code renders with the correct contrast for scanning.
-- `Block()` — the classic full-width block style (two cells per module).
-- `Dark(string)`, `Light(string)` — custom fill strings; these imply `Block()`.
+- `Block()`: the classic full-width block style (two cells per module).
+- `Dark(string)`, `Light(string)`: custom fill strings; these imply `Block()`.
 
 Defaults to `os.Stdout`.
 
@@ -188,7 +188,7 @@ builder.SetTextECIPolicy(qr.TextECIPolicyDisabled)
 ## Content helpers
 
 The `content` package builds the specially formatted payloads that scanners
-turn into actions — connect to Wi-Fi, save a contact, add a calendar event.
+turn into actions: connect to Wi-Fi, save a contact, add a calendar event.
 Each helper returns a plain string for `NewTextBuilder`:
 
 ```go
@@ -245,7 +245,7 @@ go run ./cmd/qrgo "HELLO WORLD"
 ```
 
 With no subcommand the arguments are encoded as plain text and printed to the
-terminal. Structured content types are subcommands — most take their value as a
+terminal. Structured content types are subcommands. Most take their value as a
 positional argument, while multi-field types (`wifi`, `vcard`, `event`) use
 flags:
 
@@ -274,15 +274,21 @@ and `qrgo completion <shell>` for shell completion.
 
 ## Project layout
 
-- package root (`*.go`) — QR encoding library and public API
-- `content/` — payload helpers (Wi-Fi, vCard, calendar, geo, tel, SMS, email)
-- `logo/` — decode a logo from any image format (PNG/JPEG/GIF/WebP/SVG)
-- `internal/spec` — QR spec tables (capacity, ECC, alignment, format info)
-- `internal/coding` — bit stream and Reed–Solomon error correction
-- `internal/matrix` — the module grid
-- `render/` — the renderer contract and the terminal / PNG / SVG renderers
-- `cmd/qrgo/` — the `qrgo` command-line tool
+- package root (`*.go`): QR encoding library and public API
+- `content/`: payload helpers (Wi-Fi, vCard, calendar, geo, tel, SMS, email)
+- `logo/`: decode a logo from any image format (PNG/JPEG/GIF/WebP/SVG)
+- `internal/spec`: QR spec tables (capacity, ECC, alignment, format info)
+- `internal/coding`: bit stream and Reed–Solomon error correction
+- `internal/matrix`: the module grid
+- `render/`: the renderer contract and the terminal / PNG / SVG renderers
+- `cmd/qrgo/`: the `qrgo` command-line tool
 
 ## License
 
 [MIT](LICENSE)
+
+## Trademark notice
+
+QR Code is a registered trademark of DENSO WAVE INCORPORATED. This project is
+not affiliated with or endorsed by DENSO WAVE; the term is used descriptively
+to refer to the symbology defined in ISO/IEC 18004.

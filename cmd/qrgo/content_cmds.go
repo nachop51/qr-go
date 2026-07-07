@@ -68,7 +68,7 @@ func contentCommands(o *options) []*cobra.Command {
 	}
 	wifi.Flags().StringVar(&o.ssid, "ssid", "", "network name (or give it positionally)")
 	wifi.Flags().StringVar(&o.pass, "pass", "", "network password")
-	wifi.Flags().StringVar(&o.auth, "auth", "", "authentication — WPA, WEP, or nopass")
+	wifi.Flags().StringVar(&o.auth, "auth", "", "authentication: WPA, WEP, or nopass")
 	wifi.Flags().BoolVar(&o.hidden, "hidden", false, "the network is hidden")
 
 	vcard := &cobra.Command{

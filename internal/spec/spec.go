@@ -207,7 +207,7 @@ func VersionModules(version int) []ModulePos {
 	}
 
 	bit = 0
-	// Copia 2: transpuesta — 6 filas (0..5) × 3 columnas (size-11..size-9)
+	// Copia 2: transpuesta, 6 filas (0..5) × 3 columnas (size-11..size-9)
 	for row := range 6 {
 		for col := size - 11; col <= size-9; col++ {
 			mods = append(mods, ModulePos{col, row, bit})

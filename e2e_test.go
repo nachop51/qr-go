@@ -81,9 +81,9 @@ func readResult(t *testing.T, path string) *gozxing.Result {
 
 	// PURE_BARCODE selects gozxing's detector for clean, axis-aligned,
 	// quiet-zoned images (exactly what this library renders). Without it the
-	// generic detector misreads small/high-version pristine codes — a known
+	// generic detector misreads small/high-version pristine codes: a known
 	// decoder quirk, reproducible even with reference generators like
-	// rsc.io/qr — not a defect in the code under test.
+	// rsc.io/qr, and not a defect in the code under test.
 	hints := map[gozxing.DecodeHintType]any{
 		gozxing.DecodeHintType_PURE_BARCODE: true,
 		gozxing.DecodeHintType_TRY_HARDER:   true,
@@ -375,5 +375,36 @@ func TestE2E_ECIDisabledBytesPreserved(t *testing.T) {
 	got := decodeBytes(t, path)
 	if !bytes.Equal(got, want) {
 		t.Fatalf("ECI-disabled byte mismatch:\n want %x\n got  %x", want, got)
+	}
+}
+
+// Code.Bytes returns the configured renderer's output without writing it, and
+// matches what Render would have written.
+func TestCodeBytes(t *testing.T) {
+	var buf bytes.Buffer
+	code, err := NewTextBuilder("hello bytes").
+		SetRenderer(png.New().Writer(&buf).Width(64).Height(64)).
+		Build()
+	if err != nil {
+		t.Fatalf("Build() failed: %v", err)
+	}
+
+	got, err := code.Bytes()
+	if err != nil {
+		t.Fatalf("Bytes() failed: %v", err)
+	}
+	if len(got) == 0 {
+		t.Fatal("Bytes() returned empty output")
+	}
+
+	if err := code.Render(); err != nil {
+		t.Fatalf("Render() failed: %v", err)
+	}
+	if !bytes.Equal(got, buf.Bytes()) {
+		t.Error("Bytes() != Render() output")
+	}
+
+	if _, err := (&Code{}).Bytes(); err != ErrNoRenderer {
+		t.Errorf("zero Code Bytes() error = %v, want ErrNoRenderer", err)
 	}
 }

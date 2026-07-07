@@ -9,5 +9,9 @@ type Grid interface {
 }
 
 type Renderer interface {
+	// Render writes the code to the renderer's configured sink (writer or file).
 	Render(g Grid) error
+	// Bytes returns the rendered output instead of writing it: UTF-8 text for
+	// terminal, markup for SVG, an encoded image for PNG.
+	Bytes(g Grid) ([]byte, error)
 }

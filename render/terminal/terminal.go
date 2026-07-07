@@ -1,5 +1,5 @@
 // Package terminal renders a QR grid as text. Zero dependencies beyond the
-// render contract — the lightweight, output-anywhere default.
+// render contract: the lightweight, output-anywhere default.
 //
 // By default it uses Unicode half-block glyphs (▀ ▄ █), packing two vertical
 // modules into each character cell. Because a terminal cell is about twice as
@@ -62,14 +62,20 @@ func (t Terminal) Light(s string) Terminal { t.light = s; t.half = false; return
 func (t Terminal) Invert() Terminal { t.invert = true; return t }
 
 func (t Terminal) Render(g render.Grid) error {
-	var out string
-	if t.half {
-		out = t.renderHalf(g)
-	} else {
-		out = t.renderBlock(g)
-	}
-	_, err := io.WriteString(t.w, out)
+	_, err := io.WriteString(t.w, t.text(g))
 	return err
+}
+
+// Bytes returns the rendered QR as UTF-8 text.
+func (t Terminal) Bytes(g render.Grid) ([]byte, error) {
+	return []byte(t.text(g)), nil
+}
+
+func (t Terminal) text(g render.Grid) string {
+	if t.half {
+		return t.renderHalf(g)
+	}
+	return t.renderBlock(g)
 }
 
 // ink reports whether a character cell at padded coordinate (x, y) should be

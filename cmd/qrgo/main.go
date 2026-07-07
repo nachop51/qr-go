@@ -1,5 +1,5 @@
 // Command qrgo generates QR codes from the terminal. It exposes the whole
-// qr-go library — every content helper, error-correction level, and renderer —
+// qr-go library. Every content helper, error-correction level, and renderer
 // through a single flat command:
 //
 //	qrgo "HELLO WORLD"                       # QR to the terminal

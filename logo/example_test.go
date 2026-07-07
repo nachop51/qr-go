@@ -6,7 +6,7 @@ import (
 	"github.com/nachop51/qr-go/logo"
 )
 
-// Decode normalises any supported image format — PNG, JPEG, GIF, WebP, or SVG —
+// Decode normalises any supported image format (PNG, JPEG, GIF, WebP, or SVG)
 // into an image.Image the renderers can overlay. Here an inline SVG is
 // rasterised; its 100-unit viewBox is scaled up so the result stays crisp when
 // the renderer shrinks it.

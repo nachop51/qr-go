@@ -1,7 +1,7 @@
 // Package logo decodes a QR-code logo from any supported image format into an
 // image.Image that the renderers can overlay.
 //
-// Raster formats — PNG, JPEG, GIF, WebP — are decoded directly. SVG is
+// Raster formats (PNG, JPEG, GIF, WebP) are decoded directly. SVG is
 // rasterized (it has no pixels of its own) at a resolution derived from its
 // viewBox, so it stays crisp when the renderer scales it down.
 //
@@ -26,7 +26,7 @@ import (
 )
 
 // svgTarget is the minimum size, in pixels, an SVG is rasterized to on its
-// longer edge — large enough to stay sharp after the renderer scales it.
+// longer edge, large enough to stay sharp after the renderer scales it.
 const svgTarget = 512
 
 // Decode reads a logo from r, detecting the format from its content. It supports

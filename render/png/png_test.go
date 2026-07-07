@@ -86,7 +86,7 @@ func TestLogoCappedToBudget(t *testing.T) {
 }
 
 // darkGrid is entirely dark, so after a logo overlay the only non-black pixels
-// in the code area are the cleared region — making its edges easy to measure.
+// in the code area are the cleared region, making its edges easy to measure.
 type darkGrid struct{ n int }
 
 func (d darkGrid) Size() int            { return d.n }
@@ -311,4 +311,33 @@ func TestDrawQuietFillsBackgroundAndPreservesModules(t *testing.T) {
 
 func rgbaString(c color.RGBA) string {
 	return fmt.Sprintf("rgba(%d,%d,%d,%d)", c.R, c.G, c.B, c.A)
+}
+
+// Compile-time check: PNG satisfies the full renderer contract.
+var _ render.Renderer = New()
+
+// Bytes returns exactly what Render writes, and the result decodes as a PNG.
+func TestPNGBytesMatchesRender(t *testing.T) {
+	cfg := New().Quiet(1).Width(64).Height(64)
+	g := budgetGrid{n: 21, budget: 7}
+
+	var buf bytes.Buffer
+	if err := cfg.Writer(&buf).Render(g); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	got, err := cfg.Bytes(g)
+	if err != nil {
+		t.Fatalf("Bytes: %v", err)
+	}
+	if !bytes.Equal(got, buf.Bytes()) {
+		t.Error("Bytes != Render output")
+	}
+
+	img, err := png.Decode(bytes.NewReader(got))
+	if err != nil {
+		t.Fatalf("decode Bytes output: %v", err)
+	}
+	if img.Bounds().Dx() < 64 || img.Bounds().Dy() < 64 {
+		t.Errorf("decoded image %v smaller than requested 64x64", img.Bounds())
+	}
 }

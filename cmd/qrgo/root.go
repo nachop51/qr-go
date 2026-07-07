@@ -32,7 +32,7 @@ type options struct {
 	// Binary
 	input string // file to read raw bytes from ("-" = stdin)
 
-	// Output / rendering (persistent — shared by all commands)
+	// Output / rendering (persistent shared by all commands)
 	output      string
 	format      string
 	ecc         string
@@ -58,7 +58,7 @@ terminal:
 
   qrgo "HELLO WORLD"
 
-Structured content types are subcommands — run "qrgo help <type>" (e.g.
+Structured content types are subcommands, run "qrgo help <type>" (e.g.
 "qrgo help wifi") for that type's own options:
 
   qrgo url https://example.com -o code.png
@@ -115,7 +115,7 @@ func newRootCmd() *cobra.Command {
 func (o *options) runRoot(cmd *cobra.Command, args []string) error {
 	stdin := o.maybeReadStdin(cmd, args)
 
-	// A bare invocation — no arguments, nothing piped, no flags — has nothing to
+	// A bare invocation: no arguments, nothing piped, no flags. Has nothing to
 	// encode and no expressed intent: show the full help instead of an error.
 	if len(args) == 0 && stdin == nil && cmd.Flags().NFlag() == 0 {
 		return cmd.Help()
