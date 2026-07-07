@@ -24,6 +24,15 @@
   --mono: "Departure Mono", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
   /* One family everywhere; --body kept as a role alias for input/form text. */
   --body: var(--mono);
+  /* Motion moves on a pixel grid, like the font and the modules: stepped,
+     never eased. --jump is the shared hover/press timing. */
+  --jump: 120ms steps(2, jump-end);
+  --print: 240ms steps(10, jump-end);
+}
+
+::selection {
+  background: var(--blue);
+  color: var(--card);
 }
 
 * {
@@ -91,7 +100,21 @@ body.ready #wordmark rect {
   animation-delay: calc(var(--i) * 8ms);
 }
 
+/* Same stamp under a second name so hover can restart it. */
+body.ready .wordmark:hover #wordmark rect {
+  animation-name: restamp;
+}
+
 @keyframes stamp {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes restamp {
   from {
     opacity: 0;
   }
@@ -177,6 +200,9 @@ body.ready #wordmark rect {
   border-radius: 2px;
   color: var(--ink);
   cursor: pointer;
+  transition:
+    transform var(--jump),
+    box-shadow var(--jump);
 }
 
 .tabs button:hover {
@@ -184,10 +210,15 @@ body.ready #wordmark rect {
   box-shadow: 2px 2px 0 var(--blue);
 }
 
+.tabs button:active {
+  transform: translate(0, 0);
+  box-shadow: none;
+}
+
 .tabs button[aria-selected="true"] {
   background: var(--blue);
   border-color: var(--blue);
-  color: #fff;
+  color: var(--card);
 }
 
 /* --- fields --- */
@@ -196,6 +227,20 @@ body.ready #wordmark rect {
   display: grid;
   gap: 6px;
   margin-bottom: 14px;
+  /* Rows stamp in one by one when a form is (re)built; --i set inline. */
+  animation: rise 160ms steps(3, jump-end) both;
+  animation-delay: calc(var(--i, 0) * 25ms);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .field-row:last-child {
@@ -244,7 +289,6 @@ input[type="email"],
 input[type="password"],
 input[type="number"],
 input[type="datetime-local"],
-input[type="file"],
 textarea,
 select {
   font: 14px/1.4 var(--body);
@@ -260,9 +304,58 @@ textarea {
   resize: vertical;
 }
 
-input[type="file"] {
+/* Custom file control: the native input is visually hidden but still
+   focusable/clickable via its label, so keyboard and SR flows are intact. */
+.sr-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.file-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.file-btn {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  background: var(--card);
+  border: var(--line);
+  border-radius: 2px;
+  cursor: pointer;
+  transition:
+    transform var(--jump),
+    box-shadow var(--jump);
+}
+
+.file-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 var(--blue);
+}
+
+.file-btn:active {
+  transform: none;
+  box-shadow: none;
+}
+
+.sr-input:focus-visible + .file-btn {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.file-name {
   font-family: var(--mono);
   font-size: 12px;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 :focus-visible {
@@ -286,6 +379,10 @@ legend {
   grid-template-columns: repeat(4, 1fr);
 }
 
+.segmented.two {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 .segmented label {
   display: block;
 }
@@ -306,6 +403,7 @@ legend {
   margin-left: -2px;
   cursor: pointer;
   background: var(--card);
+  transition: background var(--jump);
 }
 
 .segmented label:first-child span {
@@ -319,7 +417,7 @@ legend {
 
 .segmented input:checked + span {
   background: var(--ink);
-  color: var(--paper);
+  color: var(--card);
 }
 
 .segmented input:focus-visible + span {
@@ -330,27 +428,104 @@ legend {
 .swatch-field {
   display: grid;
   gap: 6px;
+  align-content: start;
 }
 
-input[type="color"] {
+/* Swatch + hex read as one control: the color well is a flat pixel square,
+   the hex field is editable and syncs both ways. */
+.swatch-combo {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+}
+
+.swatch-combo input[type="color"] {
   inline-size: 100%;
-  block-size: 40px;
-  padding: 3px;
+  block-size: 100%;
+  padding: 4px;
   border: var(--line);
-  border-radius: 2px;
+  border-radius: 2px 0 0 2px;
   background: var(--card);
   cursor: pointer;
 }
 
+input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 0;
+}
+
+input[type="color"]::-moz-color-swatch {
+  border: none;
+  border-radius: 0;
+}
+
+.swatch-combo input[type="text"] {
+  margin-left: -2px;
+  border-radius: 0 2px 2px 0;
+  font-size: 13px;
+}
+
+/* Range sliders: a hairline track and a square pixel thumb, same grammar as
+   the modules. Track/thumb pseudos can't share a selector across engines. */
 input[type="range"] {
-  accent-color: var(--blue);
+  appearance: none;
+  -webkit-appearance: none;
   width: 100%;
+  height: 24px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--ink);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -6px;
+  background: var(--card);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  transition: background var(--jump);
+}
+
+input[type="range"]:hover::-webkit-slider-thumb,
+input[type="range"]:active::-webkit-slider-thumb {
+  background: var(--blue);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 2px;
+  background: var(--ink);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  background: var(--card);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  transition: background var(--jump);
+}
+
+input[type="range"]:hover::-moz-range-thumb,
+input[type="range"]:active::-moz-range-thumb {
+  background: var(--blue);
 }
 
 .logo-extras {
   display: grid;
   gap: 6px;
   margin-top: 10px;
+  /* Re-runs each time the block flips from display:none. */
+  animation: rise 160ms steps(3, jump-end) both;
 }
 
 .logo-extras.hidden {
@@ -371,6 +546,35 @@ input[type="range"] {
   cursor: pointer;
 }
 
+/* Advanced options fold: dashed border marks collapsibles, same as payload. */
+.advanced {
+  border: 2px dashed var(--muted);
+  border-radius: 2px;
+  padding: 10px 12px;
+  margin-top: 18px;
+}
+
+.advanced summary {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.advanced summary:hover {
+  color: var(--ink);
+}
+
+.advanced[open] summary {
+  margin-bottom: 14px;
+}
+
+.advanced .field-row:last-child {
+  margin-bottom: 4px;
+}
+
 /* --- output ticket --- */
 
 .output {
@@ -389,16 +593,61 @@ input[type="range"] {
   padding: 30px;
 }
 
-.ticket.printed .preview {
-  animation: reprint 0.25s ease-out;
+/* The print: each regeneration wipes the code in from the top in discrete
+   rows, a blue print head sweeping just ahead of the ink. */
+.ticket.printed .preview svg {
+  animation: print-wipe var(--print) both;
 }
 
-@keyframes reprint {
+@keyframes print-wipe {
   from {
-    opacity: 0.35;
+    clip-path: inset(0 0 100% 0);
   }
   to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.preview::after {
+  content: "";
+  position: absolute;
+  left: -10px;
+  right: -10px;
+  top: 0;
+  height: 3px;
+  background: var(--blue);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ticket.printed .preview::after {
+  animation: print-head var(--print) both;
+}
+
+@keyframes print-head {
+  0% {
+    top: 0;
     opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    top: calc(100% - 3px);
+    opacity: 0;
+  }
+}
+
+.ticket.printed .mark {
+  animation: mark-flash var(--print) both;
+}
+
+@keyframes mark-flash {
+  from {
+    border-color: var(--ink);
+  }
+  to {
+    border-color: var(--blue);
   }
 }
 
@@ -438,6 +687,7 @@ input[type="range"] {
 }
 
 .preview {
+  position: relative;
   display: grid;
   place-items: center;
   aspect-ratio: 1;
@@ -458,6 +708,19 @@ input[type="range"] {
   text-align: center;
   margin: 0;
   padding: 0 20px;
+}
+
+.empty:not(.problem)::after {
+  content: "█";
+  color: var(--blue);
+  margin-left: 3px;
+  animation: caret 1s steps(1) infinite;
+}
+
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
 }
 
 .empty.problem {
@@ -485,6 +748,10 @@ input[type="range"] {
   min-height: 1em;
 }
 
+.warnings:not(:empty) {
+  animation: rise 160ms steps(3, jump-end) both;
+}
+
 .warnings:empty,
 .spec:empty {
   display: none;
@@ -494,8 +761,22 @@ input[type="range"] {
 
 .actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 10px;
+}
+
+.action-row {
+  display: grid;
+  grid-template-columns: 42px 1fr 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.fmt {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--ink);
 }
 
 .btn {
@@ -510,12 +791,15 @@ input[type="range"] {
   background: var(--card);
   color: var(--ink);
   cursor: pointer;
+  transition:
+    transform var(--jump),
+    box-shadow var(--jump);
 }
 
 .btn.primary {
   background: var(--blue);
   border-color: var(--blue);
-  color: #fff;
+  color: var(--card);
 }
 
 .btn:hover:not(:disabled) {
@@ -526,6 +810,14 @@ input[type="range"] {
 .btn:active:not(:disabled) {
   transform: translate(0, 0);
   box-shadow: none;
+}
+
+/* Post-download receipt: the button flips to ink for a beat. */
+.btn.done,
+.btn.primary.done {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--card);
 }
 
 .btn:disabled {
@@ -550,6 +842,10 @@ input[type="range"] {
   cursor: pointer;
 }
 
+.payload summary:hover {
+  color: var(--ink);
+}
+
 .payload pre {
   margin: 10px 0 0;
   font-family: var(--mono);
@@ -557,6 +853,11 @@ input[type="range"] {
   white-space: pre-wrap;
   word-break: break-all;
   color: var(--ink);
+}
+
+.payload .link-btn {
+  color: var(--blue);
+  margin-top: 10px;
 }
 
 /* --- colophon --- */
@@ -602,15 +903,29 @@ input[type="range"] {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  body.ready #wordmark rect {
+  body.ready #wordmark rect,
+  body.ready .wordmark:hover #wordmark rect,
+  .ticket.printed .preview svg,
+  .ticket.printed .preview::after,
+  .ticket.printed .mark,
+  .field-row,
+  .logo-extras,
+  .warnings:not(:empty),
+  .empty:not(.problem)::after {
     animation: none;
   }
 
-  .ticket.printed .preview {
-    animation: none;
+  .tabs button,
+  .btn,
+  .file-btn,
+  .segmented span,
+  input[type="range"]::-webkit-slider-thumb,
+  input[type="range"]::-moz-range-thumb {
+    transition: none;
   }
 
   .tabs button:hover,
+  .file-btn:hover,
   .btn:hover:not(:disabled) {
     transform: none;
   }

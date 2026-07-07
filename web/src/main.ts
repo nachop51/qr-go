@@ -46,6 +46,7 @@ interface State {
   type: string;
   values: Record<string, Values>; // per content type, so switching tabs keeps input
   ecLevel: "L" | "M" | "Q" | "H";
+  eciPolicy: "auto" | "disabled";
   dark: string;
   light: string;
   quiet: number;
@@ -58,6 +59,7 @@ const state: State = {
   type: "text",
   values: Object.fromEntries(Object.keys(FIELDS).map((k) => [k, {}])),
   ecLevel: "M",
+  eciPolicy: "auto",
   dark: "#1a1a1e",
   light: "#ffffff",
   quiet: 4,
@@ -153,9 +155,10 @@ function buildTabs(): void {
 function buildForm(focusField = false): void {
   formEl.innerHTML = "";
   const values = state.values[state.type];
-  for (const f of FIELDS[state.type]) {
+  FIELDS[state.type].forEach((f, rowIndex) => {
     const row = document.createElement("div");
     row.className = f.kind === "checkbox" ? "field-row check" : "field-row";
+    row.style.setProperty("--i", String(rowIndex)); // stagger the stamp-in
 
     const label = document.createElement("label");
     label.textContent = f.label;
@@ -204,7 +207,7 @@ function buildForm(focusField = false): void {
     if (f.kind === "checkbox") row.append(input, label);
     else row.append(label, input);
     formEl.append(row);
-  }
+  });
   if (focusField) (formEl.querySelector("input, textarea") as HTMLElement | null)?.focus();
 }
 
@@ -214,6 +217,7 @@ function options(format: "png" | "svg"): GenerateOptions {
   return {
     text: lastPayload,
     ecLevel: state.ecLevel,
+    eciPolicy: state.eciPolicy,
     format,
     dark: state.dark,
     light: state.light,
@@ -239,8 +243,8 @@ function showEmpty(message: string, isProblem = false): void {
 }
 
 function setDownloadsEnabled(on: boolean): void {
-  ($("#dl-png") as HTMLButtonElement).disabled = !on;
-  ($("#dl-svg") as HTMLButtonElement).disabled = !on;
+  for (const id of ["#dl-png", "#dl-svg", "#cp-png", "#cp-svg"])
+    ($(id) as HTMLButtonElement).disabled = !on;
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -326,6 +330,22 @@ function slug(): string {
   return `qr-${state.type}`;
 }
 
+// Brief "receipt" on a button after it did its job, then back to normal.
+const receiptTimers = new WeakMap<HTMLButtonElement, ReturnType<typeof setTimeout>>();
+function receipt(btn: HTMLButtonElement, message: string): void {
+  const original = (btn.dataset.label ??= btn.textContent!);
+  clearTimeout(receiptTimers.get(btn));
+  btn.textContent = message;
+  btn.classList.add("done");
+  receiptTimers.set(
+    btn,
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.classList.remove("done");
+    }, 1200),
+  );
+}
+
 // --- wiring -----------------------------------------------------------------
 
 function wireStyleControls(): void {
@@ -339,10 +359,35 @@ function wireStyleControls(): void {
     });
   }
 
-  const dark = $<HTMLInputElement>("#dark");
-  const light = $<HTMLInputElement>("#light");
-  dark.addEventListener("input", () => ((state.dark = dark.value), regenerate()));
-  light.addEventListener("input", () => ((state.light = light.value), regenerate()));
+  for (const radio of document.querySelectorAll<HTMLInputElement>(
+    '#eci-policy input[name="eciPolicy"]',
+  )) {
+    radio.addEventListener("change", () => {
+      state.eciPolicy = radio.value as State["eciPolicy"];
+      regenerate();
+    });
+  }
+
+  // Swatch + hex sync both ways; the hex field only applies once valid.
+  const wireSwatch = (key: "dark" | "light") => {
+    const picker = $<HTMLInputElement>(`#${key}`);
+    const hex = $<HTMLInputElement>(`#${key}-hex`);
+    picker.addEventListener("input", () => {
+      state[key] = picker.value;
+      hex.value = picker.value;
+      regenerate();
+    });
+    hex.addEventListener("input", () => {
+      const normalized = hex.value.startsWith("#") ? hex.value : `#${hex.value}`;
+      if (!/^#[0-9a-fA-F]{6}$/.test(normalized)) return;
+      state[key] = normalized.toLowerCase();
+      picker.value = state[key];
+      regenerate();
+    });
+    hex.addEventListener("blur", () => (hex.value = state[key]));
+  };
+  wireSwatch("dark");
+  wireSwatch("light");
 
   const quiet = $<HTMLInputElement>("#quiet");
   quiet.addEventListener("input", () => {
@@ -358,10 +403,12 @@ function wireStyleControls(): void {
   });
 
   const logoInput = $<HTMLInputElement>("#logo");
+  const logoName = $("#logo-name");
   logoInput.addEventListener("change", async () => {
     const file = logoInput.files?.[0];
     if (!file) return;
     state.logo = await downscaleLogo(file);
+    logoName.textContent = file.name;
     logoExtrasEl.classList.remove("hidden");
     regenerate();
   });
@@ -376,28 +423,73 @@ function wireStyleControls(): void {
     state.logo = null;
     state.logoModules = 0;
     logoInput.value = "";
+    logoName.textContent = "none";
     logoModulesEl.value = "0";
     logoModulesOut.textContent = "auto";
     logoExtrasEl.classList.add("hidden");
     regenerate();
   });
 
-  $("#dl-png").addEventListener("click", () => {
-    if (!lastPayload) return;
+  const pngBlob = (): Blob | null => {
+    if (!lastPayload) return null;
     const result = qrgo.generate(options("png"));
     if (isError(result)) {
       warningsEl.textContent = result.error;
-      return;
+      return null;
     }
-    download(
-      new Blob([result.data as Uint8Array<ArrayBuffer>], { type: "image/png" }),
-      `${slug()}.png`,
-    );
+    return new Blob([result.data as Uint8Array<ArrayBuffer>], { type: "image/png" });
+  };
+
+  const dlPng = $<HTMLButtonElement>("#dl-png");
+  dlPng.addEventListener("click", () => {
+    const blob = pngBlob();
+    if (!blob) return;
+    download(blob, `${slug()}.png`);
+    receipt(dlPng, "Saved");
   });
 
-  $("#dl-svg").addEventListener("click", () => {
+  const dlSvg = $<HTMLButtonElement>("#dl-svg");
+  dlSvg.addEventListener("click", () => {
     if (!lastResult) return;
     download(new Blob([lastResult.data as string], { type: "image/svg+xml" }), `${slug()}.svg`);
+    receipt(dlSvg, "Saved");
+  });
+
+  const cpPng = $<HTMLButtonElement>("#cp-png");
+  cpPng.addEventListener("click", async () => {
+    const blob = pngBlob();
+    if (!blob) return;
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      receipt(cpPng, "Copied");
+    } catch {
+      warningsEl.textContent = "Clipboard blocked by the browser; download instead";
+    }
+  });
+
+  // SVG lands as markup text: image/svg+xml is not paste-able in most apps.
+  const cpSvg = $<HTMLButtonElement>("#cp-svg");
+  cpSvg.addEventListener("click", async () => {
+    if (!lastResult) return;
+    try {
+      await navigator.clipboard.writeText(lastResult.data as string);
+      receipt(cpSvg, "Copied");
+    } catch {
+      warningsEl.textContent = "Clipboard blocked by the browser; download instead";
+    }
+  });
+
+  const copyBtn = $<HTMLButtonElement>("#payload-copy");
+  copyBtn.addEventListener("click", async () => {
+    if (!lastPayload) return;
+    try {
+      await navigator.clipboard.writeText(lastPayload);
+      copyBtn.textContent = "Copied";
+      setTimeout(() => (copyBtn.textContent = "Copy payload"), 1200);
+    } catch {
+      copyBtn.textContent = "Copy failed";
+      setTimeout(() => (copyBtn.textContent = "Copy payload"), 1200);
+    }
   });
 }
 

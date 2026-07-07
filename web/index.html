@@ -9,6 +9,7 @@
       content="Free QR code generator with custom colors, logo, and SVG/PNG export. Wi-Fi, vCard, URL and more. 100% Go via WebAssembly. Nothing leaves your browser."
     />
     <link rel="canonical" href="https://qr.nachop.dev/" />
+    <meta name="author" content="Ignacio Pankowski" />
     <meta name="theme-color" content="#fafaf8" />
     <meta name="color-scheme" content="light" />
 
@@ -21,8 +22,8 @@
     />
     <meta property="og:url" content="https://qr.nachop.dev/" />
     <meta property="og:image" content="https://qr.nachop.dev/social-card.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:image:width" content="2400" />
+    <meta property="og:image:height" content="1254" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="QR-GO: Free QR Code Generator in your browser" />
     <meta
@@ -30,6 +31,8 @@
       content="Custom colors, logo embedding, SVG/PNG export. 100% Go via WebAssembly. Nothing is uploaded."
     />
     <meta name="twitter:image" content="https://qr.nachop.dev/social-card.png" />
+    <meta property="article:author" content="Ignacio Pankowski" />
+    <meta property="article:published_time" content="2026-07-07" />
 
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="stylesheet" href="./styles.css" />
@@ -45,7 +48,8 @@
         "operatingSystem": "Any",
         "browserRequirements": "Requires JavaScript and WebAssembly",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-        "author": { "@type": "Person", "name": "nachop51", "url": "https://github.com/nachop51" }
+        "datePublished": "2026-07-07",
+        "author": { "@type": "Person", "name": "Ignacio Pankowski", "url": "https://github.com/nachop51" }
       }
     </script>
   </head>
@@ -74,7 +78,7 @@
           <h2 class="eyebrow">Content</h2>
           <div class="tabs" id="tabs" role="tablist" aria-label="Content type"></div>
           <div id="content-panel" role="tabpanel">
-            <form id="content-form" autocomplete="off"></form>
+            <form id="content-form" autocomplete="off" spellcheck="false"></form>
           </div>
         </div>
 
@@ -94,27 +98,64 @@
             </fieldset>
           </div>
 
-          <div class="field-row two">
-            <label class="swatch-field">
-              <span>Modules</span>
-              <input type="color" id="dark" value="#1a1a1e" />
-            </label>
-            <label class="swatch-field">
-              <span>Background</span>
-              <input type="color" id="light" value="#ffffff" />
-            </label>
+          <div class="field-row two" style="--i: 1">
+            <div class="swatch-field">
+              <label for="dark-hex">Modules</label>
+              <div class="swatch-combo">
+                <input type="color" id="dark" value="#1a1a1e" aria-label="Modules color picker" />
+                <input
+                  type="text"
+                  id="dark-hex"
+                  value="#1a1a1e"
+                  maxlength="7"
+                  spellcheck="false"
+                  autocapitalize="off"
+                  autocomplete="off"
+                />
+              </div>
+            </div>
+            <div class="swatch-field">
+              <label for="light-hex">Background</label>
+              <div class="swatch-combo">
+                <input
+                  type="color"
+                  id="light"
+                  value="#ffffff"
+                  aria-label="Background color picker"
+                />
+                <input
+                  type="text"
+                  id="light-hex"
+                  value="#ffffff"
+                  maxlength="7"
+                  spellcheck="false"
+                  autocapitalize="off"
+                  autocomplete="off"
+                />
+              </div>
+            </div>
           </div>
 
-          <div class="field-row">
+          <div class="field-row" style="--i: 2">
             <label for="quiet">Margin (quiet zone) <output id="quiet-out">4</output> modules</label>
             <input type="range" id="quiet" min="0" max="8" value="4" />
           </div>
 
-          <div class="field-row">
+          <div class="field-row" style="--i: 3">
             <label for="logo">
               Logo <span class="hint-inline">PNG or JPEG, overlaid at the center</span>
             </label>
-            <input type="file" id="logo" accept="image/png,image/jpeg" />
+            <div class="file-field">
+              <input
+                type="file"
+                id="logo"
+                accept="image/png,image/jpeg"
+                class="sr-input"
+                aria-describedby="logo-name"
+              />
+              <label for="logo" class="file-btn">Choose logo</label>
+              <span class="file-name" id="logo-name">none</span>
+            </div>
             <div class="logo-extras hidden" id="logo-extras">
               <label for="logo-modules">
                 Logo span <output id="logo-modules-out">auto</output>
@@ -124,10 +165,26 @@
             </div>
           </div>
 
-          <div class="field-row">
-            <label for="png-size">PNG export size <output id="png-size-out">800</output> px</label>
-            <input type="range" id="png-size" min="256" max="2048" step="64" value="800" />
-          </div>
+          <details class="advanced">
+            <summary>Advanced</summary>
+            <div class="field-row">
+              <fieldset>
+                <legend>ECI header</legend>
+                <div class="segmented two" id="eci-policy">
+                  <label><input type="radio" name="eciPolicy" value="auto" checked /><span>Auto</span></label>
+                  <label><input type="radio" name="eciPolicy" value="disabled" /><span>Off</span></label>
+                </div>
+                <p class="hint">
+                  Auto declares UTF-8 when the text needs it. Off skips the header for older
+                  scanners.
+                </p>
+              </fieldset>
+            </div>
+            <div class="field-row">
+              <label for="png-size">PNG export size <output id="png-size-out">800</output> px</label>
+              <input type="range" id="png-size" min="256" max="2048" step="64" value="800" />
+            </div>
+          </details>
         </div>
       </section>
 
@@ -141,13 +198,27 @@
         </div>
         <p class="spec" id="spec" aria-live="polite"></p>
         <p class="warnings" id="warnings" role="status"></p>
+        <!-- One row per output format; a terminal/text format will join these. -->
         <div class="actions">
-          <button type="button" class="btn primary" id="dl-png">Download PNG</button>
-          <button type="button" class="btn" id="dl-svg">Download SVG</button>
+          <div class="action-row">
+            <span class="fmt">PNG</span>
+            <button type="button" class="btn primary" id="dl-png" aria-label="Download PNG">
+              Download
+            </button>
+            <button type="button" class="btn" id="cp-png" aria-label="Copy PNG image">Copy</button>
+          </div>
+          <div class="action-row">
+            <span class="fmt">SVG</span>
+            <button type="button" class="btn" id="dl-svg" aria-label="Download SVG">
+              Download
+            </button>
+            <button type="button" class="btn" id="cp-svg" aria-label="Copy SVG markup">Copy</button>
+          </div>
         </div>
         <details class="payload">
           <summary>Raw payload</summary>
           <pre id="payload"></pre>
+          <button type="button" class="link-btn" id="payload-copy">Copy payload</button>
         </details>
       </section>
     </main>
