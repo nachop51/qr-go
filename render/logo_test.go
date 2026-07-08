@@ -24,7 +24,7 @@ func TestResolveLogoDefaultAndParity(t *testing.T) {
 	for _, c := range []struct {
 		configured, want int
 	}{
-		{0, 5},  // size/5 default
+		{0, 5},  // size/5 fallback for grids without a budget
 		{7, 7},  // odd span stays
 		{8, 7},  // even span nudged down to stay centred
 		{-3, 5}, // negative restores the default
@@ -32,6 +32,21 @@ func TestResolveLogoDefaultAndParity(t *testing.T) {
 		if got := render.ResolveLogo(plainGrid{n: 25}, c.configured); got != c.want {
 			t.Errorf("ResolveLogo(configured=%d) = %d, want %d", c.configured, got, c.want)
 		}
+	}
+}
+
+func TestResolveLogoDefaultsToBudget(t *testing.T) {
+	var warns int
+	orig := render.Warnf
+	render.Warnf = func(string, ...any) { warns++ }
+	defer func() { render.Warnf = orig }()
+
+	// Unconfigured -> full budget (8), parity-nudged to 7, no cap warning.
+	if got := render.ResolveLogo(budgetGrid{n: 25, budget: 8}, 0); got != 7 {
+		t.Errorf("default span = %d, want 7", got)
+	}
+	if warns != 0 {
+		t.Errorf("expected 0 warnings, got %d", warns)
 	}
 }
 

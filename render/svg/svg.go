@@ -42,19 +42,21 @@ func (s SVG) Quiet(n int) SVG        { s.quiet = n; return s }
 func (s SVG) Module(n int) SVG       { s.module = n; return s }
 
 // Logo overlays img centred on the code, embedded as a data URI. Its span
-// defaults to size/5 modules (safe at any error-correction level) and can be
-// changed with LogoModules. The overlay covers whole modules snapped to the
-// grid, so it never slices one.
+// defaults to the largest size the code's error-correction level can afford
+// to lose (see Code.MaxLogoModules) and can be lowered with LogoModules. The
+// overlay covers whole modules snapped to the grid, so it never slices one,
+// and the logo is inset one module inside the cleared region so it never
+// touches the surrounding modules.
 //
 // A logo hides the modules it covers; a span wider than the code's
-// error-correction budget (see Code.MaxLogoModules) is capped to that budget so
-// the result still scans, and the reduction is reported through render.Warnf.
+// error-correction budget is capped to that budget so the result still scans,
+// and the reduction is reported through render.Warnf.
 func (s SVG) Logo(img image.Image) SVG { s.logo = img; return s }
 
 // LogoModules sets how many modules across the logo spans. A value <= 0 restores
-// the default of size/5. A span wider than the code's error-correction budget
-// (roughly size/3 at High, size/4 at Quartile, size/5 at Medium) is capped to
-// that budget so the code stays scannable.
+// the default: the code's full error-correction budget (roughly size/3 at High,
+// size/4 at Quartile, size/5 at Medium, size/6 at Low). A span wider than that
+// budget is capped to it so the code stays scannable.
 func (s SVG) LogoModules(n int) SVG { s.logoModules = n; return s }
 
 func (s SVG) Render(g render.Grid) error {
@@ -128,9 +130,13 @@ func (s SVG) drawLogo(sb *strings.Builder, size, quiet, module, mods int) {
 	region := mods * module
 	fmt.Fprintf(sb, `<rect x="%d" y="%d" width="%d" height="%d" fill="%s"/>`, x0, y0, region, region, s.light)
 
-	// Leave a thin light ring; the browser fits and centres the image within
+	// Leave a one-module light ring on every side so the logo never touches
+	// the surrounding modules; the browser fits and centres the image within
 	// the box, preserving its aspect ratio.
-	box := region - module
+	box := region - 2*module
+	if box < module {
+		box = region - module
+	}
 	if box < 1 {
 		box = region
 	}

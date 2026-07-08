@@ -35,6 +35,27 @@
   color: var(--card);
 }
 
+/* UI chrome isn't copy: labels, buttons, hints. Data stays selectable
+   (spec line, warnings, raw payload, inputs). */
+label,
+legend,
+summary,
+.eyebrow,
+.tagline,
+.tabs button,
+.btn,
+.file-btn,
+.link-btn,
+.segmented span,
+.fmt,
+.empty,
+.file-name,
+.hint,
+.hint-inline {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -58,6 +79,17 @@
   background: var(--ink);
   color: var(--paper);
   text-align: center;
+}
+
+html {
+  scrollbar-gutter: stable both-edges;
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 body {
@@ -304,6 +336,119 @@ textarea {
   resize: vertical;
 }
 
+/* Customizable select (appearance: base-select, Chromium 135+). Other engines
+   skip this block and keep the native control, which is why every rule lives
+   under @supports. Same grammar as the rest of the studio: the closed button
+   behaves like .file-btn, the popup is a two-ink card, hover runs blue and the
+   committed value prints in ink like the segmented controls. */
+@supports (appearance: base-select) {
+  select {
+    appearance: base-select;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition:
+      transform var(--jump),
+      box-shadow var(--jump);
+  }
+
+  select:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 2px 2px 0 var(--blue);
+  }
+
+  select:active,
+  select:open {
+    transform: none;
+    box-shadow: none;
+  }
+
+  /* Caret swaps glyph instead of rotating: motion stays on the pixel grid. */
+  select::picker-icon {
+    content: "▾";
+    color: var(--muted);
+  }
+
+  select:open::picker-icon {
+    content: "▴";
+    color: var(--blue);
+  }
+
+  ::picker(select) {
+    appearance: base-select;
+    background: var(--card);
+    border: var(--line);
+    border-radius: 2px;
+    box-shadow: 4px 4px 0 var(--blue);
+    padding: 0;
+    margin-block: 6px;
+    max-block-size: 316px; /* ~8 rows; the version list scrolls */
+    scrollbar-width: thin;
+    opacity: 0;
+    transition:
+      opacity var(--jump),
+      display var(--jump) allow-discrete,
+      overlay var(--jump) allow-discrete;
+  }
+
+  select:open::picker(select) {
+    opacity: 1;
+  }
+
+  @starting-style {
+    select:open::picker(select) {
+      opacity: 0;
+    }
+  }
+
+  /* No transition on options: color would flip to white a beat before the
+     stepped background caught up, reading as the label blinking out. */
+  option {
+    font: 13px/1.4 var(--mono);
+    padding: 7px 10px;
+    background: var(--card);
+    color: var(--ink);
+  }
+
+  /* Committed value runs blue, same as tabs and the segmented controls... */
+  option:checked {
+    background: var(--blue);
+    color: var(--card);
+  }
+
+  /* ...and the roving highlight is an inset frame, same grammar as the ink
+     chart cells; flips to card over the checked row's blue fill. */
+  option:hover,
+  option:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--blue);
+    outline: none;
+  }
+
+  option:checked:hover,
+  option:checked:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--card);
+  }
+
+  option::checkmark {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    select {
+      transition: none;
+    }
+
+    select:hover {
+      transform: none;
+    }
+
+    ::picker(select) {
+      transition: none;
+    }
+  }
+}
+
 /* Custom file control: the native input is visually hidden but still
    focusable/clickable via its label, so keyboard and SR flows are intact. */
 .sr-input {
@@ -415,8 +560,10 @@ legend {
   border-radius: 0 2px 2px 0;
 }
 
+/* Selection is always the second ink: tabs, segmented, options, chart cells.
+   Black stays reserved for what's printed (QR, text, borders). */
 .segmented input:checked + span {
-  background: var(--ink);
+  background: var(--blue);
   color: var(--card);
 }
 
@@ -438,28 +585,105 @@ legend {
   grid-template-columns: 42px 1fr;
 }
 
-.swatch-combo input[type="color"] {
+/* Swatch button: the current ink as a chip behind a 4px card frame (the old
+   native input's padding, kept). Hover/open turn the frame blue. */
+.swatch-btn {
   inline-size: 100%;
   block-size: 100%;
-  padding: 4px;
+  padding: 0;
   border: var(--line);
   border-radius: 2px 0 0 2px;
-  background: var(--card);
+  background: var(--swatch, var(--ink));
+  box-shadow: inset 0 0 0 4px var(--card);
   cursor: pointer;
 }
 
-input[type="color"]::-webkit-color-swatch-wrapper {
+.swatch-btn:hover,
+.swatch-btn[aria-expanded="true"] {
+  box-shadow:
+    inset 0 0 0 2px var(--card),
+    inset 0 0 0 4px var(--blue);
+}
+
+/* Ink chart: the retro palette popover behind each swatch. A two-ink card
+   holding a quantized chart; picking stays live, light dismiss commits. */
+.ink-chart {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 12px;
+  background: var(--card);
+  border: var(--line);
+  border-radius: 2px;
+  box-shadow: 5px 5px 0 var(--blue);
+  opacity: 0;
+  transition:
+    opacity var(--jump),
+    display var(--jump) allow-discrete,
+    overlay var(--jump) allow-discrete;
+}
+
+.ink-chart:popover-open {
+  opacity: 1;
+}
+
+@starting-style {
+  .ink-chart:popover-open {
+    opacity: 0;
+  }
+}
+
+.ink-chart-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ink-chart-hex {
+  color: var(--blue);
+  text-transform: lowercase;
+}
+
+.ink-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 20px);
+  width: max-content;
+  border: var(--line);
+}
+
+.ink-grid + .ink-grid {
+  margin-top: 8px;
+}
+
+.ink-cell {
+  width: 20px;
+  height: 20px;
   padding: 0;
+  border: 0;
+  background: var(--c);
+  cursor: pointer;
 }
 
-input[type="color"]::-webkit-color-swatch {
-  border: none;
-  border-radius: 0;
+/* Double inset frame reads on any cell color: card ring, then ink (roving
+   highlight) or blue (committed value). Hover after .on so feedback wins. */
+.ink-cell.on {
+  box-shadow:
+    inset 0 0 0 2px var(--card),
+    inset 0 0 0 4px var(--blue);
 }
 
-input[type="color"]::-moz-color-swatch {
-  border: none;
-  border-radius: 0;
+.ink-cell:hover,
+.ink-cell:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 2px var(--card),
+    inset 0 0 0 4px var(--ink);
 }
 
 .swatch-combo input[type="text"] {
@@ -528,7 +752,8 @@ input[type="range"]:active::-moz-range-thumb {
   animation: rise 160ms steps(3, jump-end) both;
 }
 
-.logo-extras.hidden {
+.logo-extras.hidden,
+.field-row.hidden {
   display: none;
 }
 
@@ -546,6 +771,50 @@ input[type="range"]:active::-moz-range-thumb {
   cursor: pointer;
 }
 
+/* Collapsibles (.advanced, .payload): animated fold. The details element is a
+   two-row grid (summary + ::details-content); transitioning the content row
+   from 0fr to 1fr animates height without knowing it up front, and works in
+   Firefox where interpolate-size does not. content-visibility (allow-discrete)
+   keeps the content rendered for the whole close animation. */
+.advanced,
+.payload {
+  scroll-margin-block-start: 16px; /* breathing room when scrolled to top on open */
+  display: grid;
+  grid-template-rows: min-content 0fr;
+  transition: grid-template-rows 280ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.advanced[open],
+.payload[open] {
+  grid-template-rows: min-content 1fr;
+}
+
+.advanced::details-content,
+.payload::details-content {
+  min-block-size: 0;
+  overflow-y: clip;
+  opacity: 0;
+  transition:
+    opacity 280ms ease,
+    content-visibility 280ms allow-discrete;
+}
+
+.advanced[open]::details-content,
+.payload[open]::details-content {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .advanced,
+  .payload,
+  .advanced::details-content,
+  .payload::details-content,
+  .advanced summary,
+  .payload summary {
+    transition: none;
+  }
+}
+
 /* Advanced options fold: dashed border marks collapsibles, same as payload. */
 .advanced {
   border: 2px dashed var(--muted);
@@ -561,6 +830,7 @@ input[type="range"]:active::-moz-range-thumb {
   text-transform: uppercase;
   color: var(--muted);
   cursor: pointer;
+  transition: margin-bottom 280ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .advanced summary:hover {
@@ -573,6 +843,16 @@ input[type="range"]:active::-moz-range-thumb {
 
 .advanced .field-row:last-child {
   margin-bottom: 4px;
+}
+
+.adv-field {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.adv-hint {
+  margin: -8px 0 14px;
 }
 
 /* --- output ticket --- */
@@ -752,9 +1032,13 @@ input[type="range"]:active::-moz-range-thumb {
   animation: rise 160ms steps(3, jump-end) both;
 }
 
-.warnings:empty,
-.spec:empty {
+.warnings:empty {
   display: none;
+}
+
+/* Keep the line box when cleared so the actions below don't jump. */
+.spec:empty::before {
+  content: "\00a0";
 }
 
 /* --- actions --- */
@@ -873,20 +1157,161 @@ input[type="range"]:active::-moz-range-thumb {
   flex-wrap: wrap;
 }
 
+/* Same voice as the tagline: the two marginalia strips bookending the
+   page share size, tracking and case. Legal line and hovercard prose
+   stay sentence case (multi-line caps is noise, and DENSO WAVE's real
+   caps need to keep standing out). */
 .colophon p {
   margin: 0;
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--muted);
 }
 
 .colophon .legal {
   font-size: 10px;
+  text-transform: none;
 }
 
 .colophon a {
   color: var(--blue);
+  transition:
+    background-color var(--jump),
+    color var(--jump);
+}
+
+.colophon a:hover,
+.colophon a:focus-visible {
+  background: var(--blue);
+  color: var(--paper);
+}
+
+/* Byline: the author's name is a rubber stamp. At rest it's ink with a
+   blue underline; hover/focus inks the whole stamp (same inversion as
+   ::selection), on the shared stepped timing. Text-shadow ghosting reads
+   as a rendering bug at 11px pixel-font sizes, so no misregistration here. */
+.byline {
+  position: relative;
+  display: inline-block;
+}
+
+a.byline-name {
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 2px solid var(--blue);
+  transition:
+    background-color var(--jump),
+    color var(--jump);
+}
+
+.byline:hover .byline-name,
+.byline:focus-within .byline-name {
+  background: var(--blue);
+  color: var(--paper);
+}
+
+/* Hovercard: a mini profile ticket, same two-ink card idiom as the
+   preview. Pops above the name; ::after bridges the 10px gap so the
+   pointer can travel from name to card without dropping the hover. */
+.hovercard {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: -12px;
+  z-index: 10;
+  display: block;
+  width: 264px;
+  padding: 14px;
+  background: var(--card);
+  border: var(--line);
+  box-shadow: 5px 5px 0 var(--blue);
+  color: var(--ink);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity var(--jump),
+    transform var(--jump),
+    visibility var(--jump);
+}
+
+.hovercard::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 12px;
+}
+
+.byline:hover .hovercard,
+.byline:focus-within .hovercard {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+}
+
+.hovercard-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hovercard-avatar {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 14px;
+}
+
+.hovercard-id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hovercard-id strong {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.hovercard-handle {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.hovercard-bio {
+  display: block;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.hovercard-link {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--blue);
+  transition:
+    background-color var(--jump),
+    color var(--jump);
+}
+
+.hovercard-link:hover,
+.hovercard-link:focus-visible {
+  background: var(--blue);
+  color: var(--paper);
 }
 
 /* --- responsive + motion --- */
@@ -919,6 +1344,7 @@ input[type="range"]:active::-moz-range-thumb {
   .btn,
   .file-btn,
   .segmented span,
+  .ink-chart,
   input[type="range"]::-webkit-slider-thumb,
   input[type="range"]::-moz-range-thumb {
     transition: none;

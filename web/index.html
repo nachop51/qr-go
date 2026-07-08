@@ -49,7 +49,11 @@
         "browserRequirements": "Requires JavaScript and WebAssembly",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "datePublished": "2026-07-07",
-        "author": { "@type": "Person", "name": "Ignacio Pankowski", "url": "https://github.com/nachop51" }
+        "author": {
+          "@type": "Person",
+          "name": "Ignacio Pankowski",
+          "url": "https://github.com/nachop51"
+        }
       }
     </script>
   </head>
@@ -85,24 +89,17 @@
         <div class="panel">
           <h2 class="eyebrow">Style</h2>
 
-          <div class="field-row">
-            <fieldset class="ec-levels">
-              <legend>Error correction</legend>
-              <div class="segmented" id="ec-levels">
-                <label><input type="radio" name="ecLevel" value="L" /><span>L</span></label>
-                <label><input type="radio" name="ecLevel" value="M" checked /><span>M</span></label>
-                <label><input type="radio" name="ecLevel" value="Q" /><span>Q</span></label>
-                <label><input type="radio" name="ecLevel" value="H" /><span>H</span></label>
-              </div>
-              <p class="hint" id="ec-hint">M recovers up to 15% damage</p>
-            </fieldset>
-          </div>
-
-          <div class="field-row two" style="--i: 1">
+          <div class="field-row two" style="--i: 0">
             <div class="swatch-field">
               <label for="dark-hex">Modules</label>
               <div class="swatch-combo">
-                <input type="color" id="dark" value="#1a1a1e" aria-label="Modules color picker" />
+                <button
+                  type="button"
+                  class="swatch-btn"
+                  id="dark"
+                  data-value="#1a1a1e"
+                  aria-label="Modules color picker"
+                ></button>
                 <input
                   type="text"
                   id="dark-hex"
@@ -117,12 +114,13 @@
             <div class="swatch-field">
               <label for="light-hex">Background</label>
               <div class="swatch-combo">
-                <input
-                  type="color"
+                <button
+                  type="button"
+                  class="swatch-btn"
                   id="light"
-                  value="#ffffff"
+                  data-value="#ffffff"
                   aria-label="Background color picker"
-                />
+                ></button>
                 <input
                   type="text"
                   id="light-hex"
@@ -136,20 +134,21 @@
             </div>
           </div>
 
-          <div class="field-row" style="--i: 2">
-            <label for="quiet">Margin (quiet zone) <output id="quiet-out">4</output> modules</label>
-            <input type="range" id="quiet" min="0" max="8" value="4" />
+          <div class="field-row" style="--i: 1">
+            <label for="quiet">Margin (quiet zone) <output id="quiet-out">2</output> modules</label>
+            <input type="range" id="quiet" min="0" max="8" value="2" />
           </div>
 
-          <div class="field-row" style="--i: 3">
+          <div class="field-row" style="--i: 2">
             <label for="logo">
-              Logo <span class="hint-inline">PNG or JPEG, overlaid at the center</span>
+              Logo
+              <span class="hint-inline">PNG, JPEG, WebP or SVG, overlaid at the center</span>
             </label>
             <div class="file-field">
               <input
                 type="file"
                 id="logo"
-                accept="image/png,image/jpeg"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
                 class="sr-input"
                 aria-describedby="logo-name"
               />
@@ -157,22 +156,56 @@
               <span class="file-name" id="logo-name">none</span>
             </div>
             <div class="logo-extras hidden" id="logo-extras">
-              <label for="logo-modules">
-                Logo span <output id="logo-modules-out">auto</output>
-              </label>
-              <input type="range" id="logo-modules" min="0" max="9" value="0" />
               <button type="button" class="link-btn" id="logo-clear">Remove logo</button>
             </div>
+          </div>
+
+          <div class="field-row" style="--i: 3">
+            <label for="png-size">PNG export size <output id="png-size-out">1280</output> px</label>
+            <input type="range" id="png-size" min="256" max="2048" step="64" value="1280" />
           </div>
 
           <details class="advanced">
             <summary>Advanced</summary>
             <div class="field-row">
+              <fieldset class="ec-levels">
+                <legend>Error correction</legend>
+                <div class="segmented" id="ec-levels">
+                  <label><input type="radio" name="ecLevel" value="L" /><span>L</span></label>
+                  <label
+                    ><input type="radio" name="ecLevel" value="M" checked /><span>M</span></label
+                  >
+                  <label><input type="radio" name="ecLevel" value="Q" /><span>Q</span></label>
+                  <label><input type="radio" name="ecLevel" value="H" /><span>H</span></label>
+                </div>
+                <p class="hint" id="ec-hint">M recovers up to 15% damage</p>
+              </fieldset>
+            </div>
+            <div class="field-row two">
+              <div class="adv-field">
+                <label for="version">Version</label>
+                <select id="version"></select>
+              </div>
+              <div class="adv-field">
+                <label for="mask">Mask pattern</label>
+                <select id="mask"></select>
+              </div>
+            </div>
+            <p class="hint adv-hint">
+              Auto picks the smallest version that fits and the best-scoring mask
+            </p>
+            <div class="field-row">
               <fieldset>
                 <legend>ECI header</legend>
                 <div class="segmented two" id="eci-policy">
-                  <label><input type="radio" name="eciPolicy" value="auto" checked /><span>Auto</span></label>
-                  <label><input type="radio" name="eciPolicy" value="disabled" /><span>Off</span></label>
+                  <label
+                    ><input type="radio" name="eciPolicy" value="auto" checked /><span
+                      >Auto</span
+                    ></label
+                  >
+                  <label
+                    ><input type="radio" name="eciPolicy" value="disabled" /><span>Off</span></label
+                  >
                 </div>
                 <p class="hint">
                   Auto declares UTF-8 when the text needs it. Off skips the header for older
@@ -180,9 +213,11 @@
                 </p>
               </fieldset>
             </div>
-            <div class="field-row">
-              <label for="png-size">PNG export size <output id="png-size-out">800</output> px</label>
-              <input type="range" id="png-size" min="256" max="2048" step="64" value="800" />
+            <div class="field-row hidden" id="logo-span-row">
+              <label for="logo-modules">
+                Logo span <output id="logo-modules-out">max</output>
+              </label>
+              <input type="range" id="logo-modules" min="1" max="9" value="9" />
             </div>
           </details>
         </div>
@@ -225,10 +260,36 @@
 
     <footer class="colophon">
       <p>
-        Open source &middot; printed by
-        <a target="_blank" rel="noopener" href="https://github.com/nachop51/qr-go">
-          nachop51/qr-go
-        </a>
+        Made by
+        <span class="byline">
+          <a target="_blank" rel="noopener" href="https://github.com/nachop51" class="byline-name"
+            >Ignacio Pankowski</a
+          >
+          <span class="hovercard">
+            <span class="hovercard-head">
+              <span class="hovercard-avatar" aria-hidden="true">IP</span>
+              <span class="hovercard-id">
+                <strong>Ignacio Pankowski</strong>
+                <span class="hovercard-handle">@nachop51</span>
+              </span>
+            </span>
+            <span class="hovercard-bio"
+              >Author of QR-GO: a zero-dependency QR encoder written in Go, printed to your browser
+              via WebAssembly.</span
+            >
+            <a
+              target="_blank"
+              rel="noopener"
+              href="https://github.com/nachop51"
+              class="hovercard-link"
+              >github.com/nachop51 &nearr;</a
+            >
+          </span>
+        </span>
+        &middot; source:
+        <a target="_blank" rel="noopener" href="https://github.com/nachop51/qr-go"
+          >nachop51/qr-go</a
+        >
         &middot; 0 deps
       </p>
       <p class="legal">QR Code is a registered trademark of DENSO WAVE INCORPORATED.</p>

@@ -50,6 +50,46 @@ func TestLogoStillScannable(t *testing.T) {
 	}
 }
 
+// With no explicit span, the logo defaults to the full error-correction
+// budget; the result must still decode at every level.
+func TestLogoDefaultMaxStillScannable(t *testing.T) {
+	const want = "https://github.com/nachop51/qr-go"
+
+	logo := image.NewRGBA(image.Rect(0, 0, 256, 256))
+	draw.Draw(logo, logo.Bounds(), &image.Uniform{C: color.RGBA{200, 30, 30, 255}}, image.Point{}, draw.Src)
+
+	for _, level := range []qr.CorrectionLevel{
+		qr.CorrectionLevelLow, qr.CorrectionLevelMedium,
+		qr.CorrectionLevelQuartile, qr.CorrectionLevelHigh,
+	} {
+		code, err := qr.NewTextBuilder(want).SetErrorCorrectionLevel(level).Build()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var buf bytes.Buffer
+		if err := pngr.New().Writer(&buf).Logo(logo).Render(code); err != nil {
+			t.Fatal(err)
+		}
+
+		img, _, err := image.Decode(&buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bmp, err := gozxing.NewBinaryBitmapFromImage(img)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := qrcode.NewQRCodeReader().Decode(bmp, nil)
+		if err != nil {
+			t.Fatalf("level %v: max-logo code did not decode: %v", level, err)
+		}
+		if res.GetText() != want {
+			t.Fatalf("level %v: decoded %q, want %q", level, res.GetText(), want)
+		}
+	}
+}
+
 func TestMaxLogoModules(t *testing.T) {
 	for _, c := range []struct {
 		level qr.CorrectionLevel

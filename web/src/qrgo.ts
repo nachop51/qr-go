@@ -16,12 +16,16 @@ export interface GenerateOptions {
   size?: number;
   moduleSize?: number;
   logo?: Uint8Array;
-  logoModules?: number;
+  logoModules?: number; // omit or 0 = max the EC level allows
+  version?: number; // 1-40; omit = auto
+  mask?: number; // 0-7; omit = auto
 }
 
 export interface GenerateResult {
   data: Uint8Array | string;
   size: number;
+  version: number;
+  mask: number;
   maxLogoModules: number;
   warnings: string[];
   error?: undefined;

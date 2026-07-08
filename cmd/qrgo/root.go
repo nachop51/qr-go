@@ -102,7 +102,7 @@ func newRootCmd() *cobra.Command {
 	f.BoolVar(&o.invert, "invert", false, "terminal: swap dark/light (for dark backgrounds)")
 	f.BoolVar(&o.block, "block", false, "terminal: classic full-block style")
 	f.StringVar(&o.logo, "logo", "", "overlay a logo image (PNG/JPEG/GIF/WebP/SVG) on PNG/SVG output")
-	f.IntVar(&o.logoModules, "logo-modules", 0, "logo span in modules (0 = default size/5)")
+	f.IntVar(&o.logoModules, "logo-modules", 0, "logo span in modules (0 = max the EC level allows)")
 	f.BoolVar(&o.noECI, "no-eci", false, "disable automatic ECI for text")
 	f.BoolVarP(&o.info, "info", "i", false, "print the encoding outcome (version, mask, segments) to stdout")
 

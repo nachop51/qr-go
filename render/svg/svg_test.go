@@ -81,12 +81,14 @@ func TestSVGLogo(t *testing.T) {
 	}
 	out := buf.String()
 
-	// Default span size/5 = 5; module 10, quiet 4 -> region at (140,140), 50x50.
+	// fakeGrid has no budget, so the span falls back to size/5 = 5; module 10,
+	// quiet 4 -> region at (140,140), 50x50.
 	if !strings.Contains(out, `<rect x="140" y="140" width="50" height="50" fill="#ffffff"/>`) {
 		t.Fatalf("expected module-aligned cleared region, got: %s", out)
 	}
-	// Logo box leaves a one-module ring: (145,145), 40x40, embedded as a data URI.
-	if !strings.Contains(out, `<image x="145" y="145" width="40" height="40" preserveAspectRatio="xMidYMid meet" href="data:image/png;base64,`) {
+	// Logo box leaves a one-module ring on every side: (150,150), 30x30,
+	// embedded as a data URI.
+	if !strings.Contains(out, `<image x="150" y="150" width="30" height="30" preserveAspectRatio="xMidYMid meet" href="data:image/png;base64,`) {
 		t.Fatalf("expected embedded logo image, got: %s", out)
 	}
 }

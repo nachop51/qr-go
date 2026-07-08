@@ -20,10 +20,12 @@ type LogoBudgeter interface {
 }
 
 // ResolveLogo returns the effective centred-logo span, in whole modules, for a
-// grid: the configured span (or the size/5 default when configured <= 0),
-// capped to the grid's recoverable budget when it implements [LogoBudgeter],
-// then snapped to the odd module grid so it centres with equal margins. A cap
-// is reported through [Warnf]. It returns 0 when no logo should be drawn.
+// grid. When configured <= 0 it defaults to the grid's full recoverable budget
+// (see [LogoBudgeter]) — the largest span the error-correction level can
+// afford to lose — falling back to size/5 for grids without a budget. An
+// explicit span is capped to that budget, then snapped to the odd module grid
+// so it centres with equal margins. A cap is reported through [Warnf]. It
+// returns 0 when no logo should be drawn.
 //
 // Both raster and vector renderers call this so a logo behaves identically
 // across output formats.
@@ -37,7 +39,11 @@ func ResolveLogo(g Grid, configured int) int {
 
 	mods := configured
 	if mods <= 0 {
-		mods = size / 5
+		if budget > 0 {
+			mods = budget
+		} else {
+			mods = size / 5
+		}
 	}
 	capped := false
 	if budget > 0 && mods > budget {

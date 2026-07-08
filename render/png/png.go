@@ -30,22 +30,25 @@ func New() PNG {
 	return PNG{filename: "image.png", dark: color.Black, white: color.White, quiet: 4, width: 800, height: 800}
 }
 
-// Logo overlays img centred on the code. Its span defaults to size/5 modules
-// (safe at any error-correction level) and can be changed with LogoModules. The
-// overlay covers whole modules snapped to the grid, so it never slices one.
+// Logo overlays img centred on the code. Its span defaults to the largest
+// size the code's error-correction level can afford to lose (see
+// Code.MaxLogoModules) and can be lowered with LogoModules. The overlay covers
+// whole modules snapped to the grid, so it never slices one, and the logo is
+// inset one module inside the cleared region so it never touches the
+// surrounding modules.
 //
 // A logo hides the modules it covers; a span wider than the code's
-// error-correction budget (see Code.MaxLogoModules) is capped to that budget so
-// the result still scans, and the reduction is reported through render.Warnf.
+// error-correction budget is capped to that budget so the result still scans,
+// and the reduction is reported through render.Warnf.
 func (p PNG) Logo(img image.Image) PNG {
 	p.logo = img
 	return p
 }
 
 // LogoModules sets how many modules across the logo spans. A value <= 0 restores
-// the default of size/5. A span wider than the code's error-correction budget
-// (roughly size/3 at High, size/4 at Quartile, size/5 at Medium) is capped to
-// that budget so the code stays scannable.
+// the default: the code's full error-correction budget (roughly size/3 at High,
+// size/4 at Quartile, size/5 at Medium, size/6 at Low). A span wider than that
+// budget is capped to it so the code stays scannable.
 func (p PNG) LogoModules(n int) PNG {
 	p.logoModules = n
 	return p
@@ -143,9 +146,13 @@ func (p PNG) drawLogo(img *image.RGBA, offX, offY, size, scale, mods int) {
 	draw.Draw(img, image.Rect(x0, y0, x0+region, y0+region),
 		&image.Uniform{C: p.white}, image.Point{}, draw.Src)
 
-	// Fit the logo inside the region, leaving a thin white ring, preserving the
-	// aspect ratio, centred on the region.
-	box := region - scale
+	// Fit the logo inside the region, leaving a one-module white ring on every
+	// side so it never touches the surrounding modules, preserving the aspect
+	// ratio, centred on the region.
+	box := region - 2*scale
+	if box < scale {
+		box = region - scale
+	}
 	if box < 1 {
 		box = region
 	}

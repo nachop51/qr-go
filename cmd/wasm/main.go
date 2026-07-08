@@ -3,7 +3,7 @@
 // Command wasm exposes the qr-go library to JavaScript as a single `qrgo`
 // global:
 //
-//	qrgo.generate(opts) -> {data, size, maxLogoModules, warnings} | {error}
+//	qrgo.generate(opts) -> {data, size, version, mask, maxLogoModules, warnings} | {error}
 //	qrgo.content.{wifi,vcard,event,url,tel,sms,geo,email}(...) -> string
 //
 // generate opts (all optional except text):
@@ -19,7 +19,9 @@
 //	  size:        int,                             // png output px (square)
 //	  moduleSize:  int,                             // svg px per module
 //	  logo:        Uint8Array,                      // png or jpeg bytes
-//	  logoModules: int,                             // logo span in modules
+//	  logoModules: int,                             // logo span in modules; omit or 0 = max the EC level allows
+//	  version:     int,                             // 1-40; omit or 0 = auto (errors if the data doesn't fit)
+//	  mask:        int,                             // 0-7; omit or -1 = auto (best-scoring pattern)
 //	}
 //
 // PNG returns data as a Uint8Array, SVG as a string.
@@ -199,11 +201,17 @@ func generate(opts js.Value) any {
 		return errResult("unknown format %q: want png or svg", format)
 	}
 
-	code, err := qr.NewTextBuilder(text).
+	builder := qr.NewTextBuilder(text).
 		SetRenderer(renderer).
 		SetErrorCorrectionLevel(ecLevel(opts)).
-		SetTextECIPolicy(eciPolicy(opts)).
-		Build()
+		SetTextECIPolicy(eciPolicy(opts))
+	if v := num(opts, "version", 0); v > 0 {
+		builder = builder.SetVersion(v)
+	}
+	if m := num(opts, "mask", -1); m >= 0 {
+		builder = builder.SetMask(m)
+	}
+	code, err := builder.Build()
 	if err != nil {
 		return errResult("%v", err)
 	}
@@ -231,6 +239,8 @@ func generate(opts js.Value) any {
 	return map[string]any{
 		"data":           out,
 		"size":           code.Size(),
+		"version":        code.Version,
+		"mask":           code.Mask,
 		"maxLogoModules": code.MaxLogoModules(),
 		"warnings":       warnings,
 	}
