@@ -1,6 +1,12 @@
 package main
 
-import "github.com/spf13/cobra"
+import (
+	"regexp"
+	"strings"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+)
 
 // contentCommands builds one subcommand per content type. Only content-specific
 // flags live here; the render/output flags are inherited from the root's
@@ -49,12 +55,29 @@ func contentCommands(o *options) []*cobra.Command {
 	email.Flags().StringVar(&o.subject, "subject", "", "subject line")
 	email.Flags().StringVar(&o.body, "body", "", "body text")
 
+	// pflag reads a negative coordinate ("-20.05") as a run of shorthand
+	// flags, so geo parses its own arguments: number-shaped tokens become
+	// positionals, everything else goes through the normal flag parser.
 	geo := &cobra.Command{
-		Use:     "geo <lat> <lng>",
-		Short:   "Encode geographic coordinates as a geo: URI",
-		Example: "  qrgo geo 48.8584 2.2945",
-		Args:    cobra.ArbitraryArgs,
-		RunE:    o.runContent("geo"),
+		Use:                "geo <lat> <lng>",
+		Short:              "Encode geographic coordinates as a geo: URI",
+		Example:            "  qrgo geo 48.8584 2.2945\n  qrgo geo -20.0566 57.5250 -o mru.png",
+		Args:               cobra.ArbitraryArgs,
+		DisableFlagParsing: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			pos, err := parseFlagsKeepingNegatives(cmd, args)
+			if err != nil {
+				return err
+			}
+			if help, _ := cmd.Flags().GetBool("help"); help {
+				return cmd.Help()
+			}
+			bothFlags := cmd.Flags().Changed("lat") && cmd.Flags().Changed("lng")
+			if !(len(pos) == 2 || (len(pos) == 0 && bothFlags)) {
+				return reportUsageError(cmd, usageError{"geo: give both coordinates, either positionally (qrgo geo <lat> <lng>) or with --lat and --lng"})
+			}
+			return o.runContent("geo")(cmd, pos)
+		},
 	}
 	geo.Flags().Float64Var(&o.lat, "lat", 0, "latitude (when not given positionally)")
 	geo.Flags().Float64Var(&o.lng, "lng", 0, "longitude (when not given positionally)")
@@ -112,4 +135,68 @@ func contentCommands(o *options) []*cobra.Command {
 	binary.Flags().StringVar(&o.input, "input", "", "read raw bytes from a file (- for stdin)")
 
 	return []*cobra.Command{text, url, tel, sms, email, geo, wifi, vcard, event, binary}
+}
+
+// negNumber matches a token that is a negative decimal number ("-20", "-.5",
+// "-20.0566"); such a token can never be a flag here, no flag has a numeric
+// shorthand.
+var negNumber = regexp.MustCompile(`^-(\d+(\.\d*)?|\.\d+)$`)
+
+// parseFlagsKeepingNegatives is the flag pass for a command with
+// DisableFlagParsing: it routes negative-number tokens to the returned
+// positionals and parses the remaining arguments as flags.
+func parseFlagsKeepingNegatives(cmd *cobra.Command, args []string) ([]string, error) {
+	// cmd.ParseFlags is a no-op under DisableFlagParsing, so parse the flag
+	// set directly. InheritedFlags first: its side effect merges the
+	// persistent flags into cmd.Flags() for the lookups and parse below.
+	cmd.InheritedFlags()
+	fs := cmd.Flags()
+
+	var flagArgs, pos []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--":
+			pos = append(pos, args[i+1:]...)
+			i = len(args)
+		case negNumber.MatchString(a):
+			pos = append(pos, a)
+		case len(a) > 1 && strings.HasPrefix(a, "-"):
+			flagArgs = append(flagArgs, a)
+			if flagWantsNextArg(fs, a) && i+1 < len(args) {
+				i++
+				flagArgs = append(flagArgs, args[i])
+			}
+		default:
+			pos = append(pos, a)
+		}
+	}
+
+	return pos, fs.Parse(flagArgs)
+}
+
+// flagWantsNextArg reports whether the flag token consumes the following
+// argument as its value (so a negative number there stays with its flag).
+func flagWantsNextArg(fs *pflag.FlagSet, token string) bool {
+	if strings.Contains(token, "=") {
+		return false
+	}
+	if strings.HasPrefix(token, "--") {
+		f := fs.Lookup(token[2:])
+		return f != nil && f.NoOptDefVal == ""
+	}
+	// Shorthand run ("-eM", "-io"): only a value flag in last position takes
+	// the next argument; earlier ones consume the rest of the token itself.
+	body := token[1:]
+	for i := 0; i < len(body); i++ {
+		f := fs.ShorthandLookup(string(body[i]))
+		if f == nil {
+			return false
+		}
+		if f.NoOptDefVal != "" {
+			continue // boolean-style: consumes nothing
+		}
+		return i == len(body)-1
+	}
+	return false
 }

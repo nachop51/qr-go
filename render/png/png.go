@@ -7,11 +7,15 @@ import (
 	"image/draw"
 	"image/png"
 	"io"
+	"math"
 	"os"
 
+	"github.com/srwiley/rasterx"
 	xdraw "golang.org/x/image/draw"
+	"golang.org/x/image/math/fixed"
 
 	"github.com/nachop51/qr-go/render"
+	"github.com/nachop51/qr-go/render/style"
 )
 
 type PNG struct {
@@ -24,6 +28,15 @@ type PNG struct {
 	quiet       int
 	logo        image.Image
 	logoModules int
+	moduleShape style.ModuleShape
+	frameShape  style.EyeShape
+	ballShape   style.EyeShape
+	eyeFrame    color.Color // nil follows the module color
+	eyeBall     color.Color
+	gradient    style.GradientKind
+	gradFrom    color.Color
+	gradTo      color.Color
+	gradAngle   float64
 }
 
 func New() PNG {
@@ -89,6 +102,49 @@ func (p PNG) Height(h int) PNG {
 	return p
 }
 
+// ModuleShape sets how data modules are drawn. Styled shapes assume the grid
+// is a real QR code (the three finder eyes are located geometrically).
+func (p PNG) ModuleShape(m style.ModuleShape) PNG { p.moduleShape = m; return p }
+
+// EyeShape sets both the finder frame and ball shape at once.
+func (p PNG) EyeShape(e style.EyeShape) PNG { p.frameShape, p.ballShape = e, e; return p }
+
+// EyeFrameShape sets the shape of the 7x7 finder ring only.
+func (p PNG) EyeFrameShape(e style.EyeShape) PNG { p.frameShape = e; return p }
+
+// EyeBallShape sets the shape of the 3x3 finder pupil only.
+func (p PNG) EyeBallShape(e style.EyeShape) PNG { p.ballShape = e; return p }
+
+// EyeFrame colors the finder rings. Nil follows the module color (or
+// gradient, when one is set).
+func (p PNG) EyeFrame(c color.Color) PNG { p.eyeFrame = c; return p }
+
+// EyeBall colors the finder pupils. Nil follows the module color (or
+// gradient, when one is set).
+func (p PNG) EyeBall(c color.Color) PNG { p.eyeBall = c; return p }
+
+// GradientLinear fills the modules with a two-stop linear gradient. The angle
+// is in degrees: 0 runs left to right, 90 top to bottom.
+func (p PNG) GradientLinear(from, to color.Color, angleDeg float64) PNG {
+	p.gradient, p.gradFrom, p.gradTo, p.gradAngle = style.GradientLinear, from, to, angleDeg
+	return p
+}
+
+// GradientRadial fills the modules with a two-stop radial gradient from the
+// centre of the code.
+func (p PNG) GradientRadial(from, to color.Color) PNG {
+	p.gradient, p.gradFrom, p.gradTo = style.GradientRadial, from, to
+	return p
+}
+
+// styled reports whether any option moves rendering off the fast square path.
+func (p PNG) styled() bool {
+	return p.moduleShape != style.ModuleSquare ||
+		p.frameShape != style.EyeSquare || p.ballShape != style.EyeSquare ||
+		p.eyeFrame != nil || p.eyeBall != nil ||
+		p.gradient != style.GradientNone
+}
+
 func (p PNG) drawModule(img *image.RGBA, px, py, scale int) {
 	for i := range scale {
 		for j := range scale {
@@ -120,10 +176,14 @@ func (p PNG) buildImage(g render.Grid) *image.RGBA {
 	offX := (w - content) / 2
 	offY := (h - content) / 2
 
-	for y := range size {
-		for x := range size {
-			if g.IsDark(x, y) {
-				p.drawModule(img, offX+(x+p.quiet)*scale, offY+(y+p.quiet)*scale, scale)
+	if p.styled() {
+		p.drawStyled(img, g, offX, offY, scale)
+	} else {
+		for y := range size {
+			for x := range size {
+				if g.IsDark(x, y) {
+					p.drawModule(img, offX+(x+p.quiet)*scale, offY+(y+p.quiet)*scale, scale)
+				}
 			}
 		}
 	}
@@ -136,6 +196,134 @@ func (p PNG) buildImage(g render.Grid) *image.RGBA {
 
 	return img
 }
+
+// drawStyled rasterizes shaped modules and whole-shape finder eyes through
+// rasterx (anti-aliased, nonzero winding), in three fill passes: data
+// modules, eye frames, eye balls.
+func (p PNG) drawStyled(img *image.RGBA, g render.Grid, offX, offY, scale int) {
+	b := img.Bounds()
+	scanner := rasterx.NewScannerGV(b.Dx(), b.Dy(), img, b)
+	filler := rasterx.NewFiller(b.Dx(), b.Dy(), scanner)
+	rp := &rasterPath{
+		f:     filler,
+		scale: float64(scale),
+		offX:  float64(offX + p.quiet*scale),
+		offY:  float64(offY + p.quiet*scale),
+	}
+
+	moduleSrc := p.moduleSource(b)
+	p.warnContrast()
+
+	n := g.Size()
+	scanner.SetColor(moduleSrc)
+	for y := range n {
+		for x := range n {
+			if !g.IsDark(x, y) || style.InEye(x, y, n) {
+				continue
+			}
+			var c style.Corners
+			if p.moduleShape == style.ModuleRounded {
+				c = style.CornerMask(g, x, y)
+			}
+			style.AddModule(rp, float64(x), float64(y), p.moduleShape, c)
+		}
+	}
+	filler.Draw()
+	filler.Clear()
+
+	eyes := style.EyeRects(n)
+	scanner.SetColor(orSource(p.eyeFrame, moduleSrc))
+	for _, e := range eyes {
+		style.AddEyeFrame(rp, e, p.frameShape)
+	}
+	filler.Draw()
+	filler.Clear()
+
+	scanner.SetColor(orSource(p.eyeBall, moduleSrc))
+	for _, e := range eyes {
+		style.AddEyeBall(rp, e, p.ballShape)
+	}
+	filler.Draw()
+	filler.Clear()
+}
+
+// moduleSource returns what the module pass paints with: the flat dark color,
+// or a per-pixel gradient spanning the whole image so all passes share one
+// ramp (mirroring the SVG renderer's userSpaceOnUse gradient).
+func (p PNG) moduleSource(b image.Rectangle) any {
+	if p.gradient == style.GradientNone {
+		return p.dark
+	}
+	cx, cy := float64(b.Dx())/2, float64(b.Dy())/2
+	if p.gradient == style.GradientRadial {
+		reach := math.Hypot(cx, cy) // corners land exactly on the end stop
+		return rasterx.ColorFunc(func(x, y int) color.Color {
+			t := math.Hypot(float64(x)-cx, float64(y)-cy) / reach
+			return lerpColor(p.gradFrom, p.gradTo, t)
+		})
+	}
+	rad := p.gradAngle * math.Pi / 180
+	dx, dy := math.Cos(rad), math.Sin(rad)
+	x1, y1 := cx*(1-dx), cy*(1-dy)
+	span := (cx*(1+dx)-x1)*dx + (cy*(1+dy)-y1)*dy
+	return rasterx.ColorFunc(func(x, y int) color.Color {
+		t := ((float64(x)-x1)*dx + (float64(y)-y1)*dy) / span
+		return lerpColor(p.gradFrom, p.gradTo, min(max(t, 0), 1))
+	})
+}
+
+func orSource(c color.Color, fallback any) any {
+	if c != nil {
+		return c
+	}
+	return fallback
+}
+
+func lerpColor(a, b color.Color, t float64) color.Color {
+	ar, ag, ab, aa := a.RGBA()
+	br, bg, bb, ba := b.RGBA()
+	l := func(x, y uint32) uint16 {
+		return uint16(math.Round(float64(x) + (float64(y)-float64(x))*t))
+	}
+	return color.RGBA64{R: l(ar, br), G: l(ag, bg), B: l(ab, bb), A: l(aa, ba)}
+}
+
+// warnContrast flags styled color choices likely to break scanning.
+func (p PNG) warnContrast() {
+	if p.gradient != style.GradientNone {
+		style.WarnContrast("gradient start color", p.gradFrom, p.white)
+		style.WarnContrast("gradient end color", p.gradTo, p.white)
+	} else {
+		style.WarnContrast("module color", p.dark, p.white)
+	}
+	if p.eyeFrame != nil {
+		style.WarnContrast("eye frame color", p.eyeFrame, p.white)
+	}
+	if p.eyeBall != nil {
+		style.WarnContrast("eye ball color", p.eyeBall, p.white)
+	}
+}
+
+// rasterPath adapts style.Path onto a rasterx filler, mapping module units to
+// device pixels: px = off + v*scale.
+type rasterPath struct {
+	f                 *rasterx.Filler
+	scale, offX, offY float64
+}
+
+func (p *rasterPath) pt(x, y float64) fixed.Point26_6 {
+	return fixed.Point26_6{
+		X: fixed.Int26_6(math.Round((p.offX + x*p.scale) * 64)),
+		Y: fixed.Int26_6(math.Round((p.offY + y*p.scale) * 64)),
+	}
+}
+
+func (p *rasterPath) MoveTo(x, y float64) { p.f.Start(p.pt(x, y)) }
+func (p *rasterPath) LineTo(x, y float64) { p.f.Line(p.pt(x, y)) }
+func (p *rasterPath) CubeTo(c1x, c1y, c2x, c2y, x, y float64) {
+	p.f.CubeBezier(p.pt(c1x, c1y), p.pt(c2x, c2y), p.pt(x, y))
+}
+func (p *rasterPath) Close() { p.f.Stop(true) }
 
 func (p PNG) drawLogo(img *image.RGBA, offX, offY, size, scale, mods int) {
 	// Cleared region, expressed in whole modules and snapped to the grid.

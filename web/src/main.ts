@@ -1,4 +1,11 @@
-import { initQrgo, isError, type GenerateOptions, type GenerateResult } from "./qrgo";
+import {
+  initQrgo,
+  isError,
+  type EyeShape,
+  type GenerateOptions,
+  type GenerateResult,
+  type ModuleShape,
+} from "./qrgo";
 import { CONTENT_TYPES, FIELDS, type Field, type Values } from "./forms";
 import { createSwatchPicker } from "./colorpicker";
 
@@ -56,6 +63,15 @@ interface State {
   pngSize: number;
   logo: Uint8Array | null;
   logoModules: number; // 0 = max the EC level allows
+  moduleShape: ModuleShape;
+  eyeFrameShape: EyeShape;
+  eyeBallShape: EyeShape;
+  eyeFrame: string; // "" = follow the module color
+  eyeBall: string; // "" = follow the module color
+  gradientKind: "none" | "linear" | "radial";
+  gradientFrom: string;
+  gradientTo: string;
+  gradientAngle: number; // degrees, linear only
 }
 
 const state: State = {
@@ -71,6 +87,15 @@ const state: State = {
   pngSize: 1280,
   logo: null,
   logoModules: 0,
+  moduleShape: "square",
+  eyeFrameShape: "square",
+  eyeBallShape: "square",
+  eyeFrame: "",
+  eyeBall: "",
+  gradientKind: "none",
+  gradientFrom: "#1a1a1e",
+  gradientTo: "#4338ca",
+  gradientAngle: 45,
 };
 
 let lastPayload = "";
@@ -135,6 +160,7 @@ function selectTab(btn: HTMLButtonElement, focus = false): void {
 }
 
 function buildTabs(): void {
+  tabsEl.innerHTML = ""; // replaces the static boot copy from index.html
   for (const t of CONTENT_TYPES) {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -180,8 +206,13 @@ function buildTabs(): void {
 }
 
 function buildForm(focusField = false): void {
-  formEl.innerHTML = "";
   const values = state.values[state.type];
+  // Adopt anything typed into the static boot form before this script ran.
+  for (const el of formEl.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[id^="f-"]')) {
+    const key = el.id.slice(2);
+    if (el.value && values[key] === undefined) values[key] = el.value;
+  }
+  formEl.innerHTML = "";
   FIELDS[state.type].forEach((f, rowIndex) => {
     const row = document.createElement("div");
     row.className = f.kind === "checkbox" ? "field-row check" : "field-row";
@@ -236,7 +267,12 @@ function buildForm(focusField = false): void {
     else row.append(label, input);
     formEl.append(row);
   });
-  if (focusField) (formEl.querySelector("input, textarea") as HTMLElement | null)?.focus();
+  // preventScroll: on mobile the form sits below the preview ticket, and a
+  // scrolling boot focus reads as the page jumping (Lighthouse flags it as CLS).
+  if (focusField)
+    (formEl.querySelector("input, textarea") as HTMLElement | null)?.focus({
+      preventScroll: true,
+    });
 }
 
 // --- generation -------------------------------------------------------------
@@ -254,6 +290,21 @@ function options(format: "png" | "svg"): GenerateOptions {
     ...(state.logo ? { logo: state.logo, logoModules: state.logoModules } : {}),
     ...(state.version > 0 ? { version: state.version } : {}),
     ...(state.mask >= 0 ? { mask: state.mask } : {}),
+    ...(state.moduleShape !== "square" ? { moduleShape: state.moduleShape } : {}),
+    ...(state.eyeFrameShape !== "square" ? { eyeFrameShape: state.eyeFrameShape } : {}),
+    ...(state.eyeBallShape !== "square" ? { eyeBallShape: state.eyeBallShape } : {}),
+    ...(state.eyeFrame ? { eyeFrame: state.eyeFrame } : {}),
+    ...(state.eyeBall ? { eyeBall: state.eyeBall } : {}),
+    ...(state.gradientKind !== "none"
+      ? {
+          gradient: {
+            kind: state.gradientKind,
+            from: state.gradientFrom,
+            to: state.gradientTo,
+            ...(state.gradientKind === "linear" ? { angle: state.gradientAngle } : {}),
+          },
+        }
+      : {}),
   };
 }
 
@@ -419,7 +470,39 @@ function syncFromDom(): void {
   state.version = Number($<HTMLSelectElement>("#version").value);
   state.mask = Number($<HTMLSelectElement>("#mask").value);
 
+  state.moduleShape = $<HTMLSelectElement>("#module-shape").value as State["moduleShape"];
+  state.eyeFrameShape = $<HTMLSelectElement>("#eye-frame-shape").value as State["eyeFrameShape"];
+  state.eyeBallShape = $<HTMLSelectElement>("#eye-ball-shape").value as State["eyeBallShape"];
+  state.gradientKind = $<HTMLSelectElement>("#gradient-kind").value as State["gradientKind"];
+
+  // Eye colors: an empty hex field means "follow the module color".
+  for (const [key, id] of [
+    ["eyeFrame", "eye-frame"],
+    ["eyeBall", "eye-ball"],
+  ] as const) {
+    const hex = $<HTMLInputElement>(`#${id}-hex`).value.trim().toLowerCase();
+    state[key] = /^#[0-9a-f]{6}$/.test(hex) ? hex : "";
+  }
+  for (const [key, id] of [
+    ["gradientFrom", "grad-from"],
+    ["gradientTo", "grad-to"],
+  ] as const) {
+    const swatch = $<HTMLButtonElement>(`#${id}`);
+    state[key] = (swatch.dataset.value ?? state[key]).toLowerCase();
+    $<HTMLInputElement>(`#${id}-hex`).value = state[key];
+  }
+  const angle = $<HTMLInputElement>("#gradient-angle");
+  state.gradientAngle = Number(angle.value);
+  $("#gradient-angle-out").textContent = angle.value;
+  syncGradientRows();
+
   readLogoSpan();
+}
+
+// The gradient color/angle rows only make sense while a gradient is active.
+function syncGradientRows(): void {
+  $("#gradient-colors").classList.toggle("hidden", state.gradientKind === "none");
+  $("#gradient-angle-row").classList.toggle("hidden", state.gradientKind !== "linear");
 }
 
 function wireStyleControls(): void {
@@ -492,6 +575,74 @@ function wireStyleControls(): void {
   };
   wireSwatch("dark");
   wireSwatch("light");
+
+  // Generic hex+swatch wiring for the styling colors. allowEmpty maps a
+  // cleared field to "" (follow the module color).
+  const wireColor = (
+    id: string,
+    label: string,
+    get: () => string,
+    set: (v: string) => void,
+    allowEmpty = false,
+  ) => {
+    const hex = $<HTMLInputElement>(`#${id}-hex`);
+    const picker = createSwatchPicker({
+      button: $<HTMLButtonElement>(`#${id}`),
+      label,
+      onPick: (value) => {
+        set(value);
+        hex.value = value;
+        regenerate();
+      },
+    });
+    hex.addEventListener("input", () => {
+      const raw = hex.value.trim();
+      if (allowEmpty && raw === "") {
+        set("");
+        regenerate();
+        return;
+      }
+      const normalized = raw.startsWith("#") ? raw : `#${raw}`;
+      if (!/^#[0-9a-fA-F]{6}$/.test(normalized)) return;
+      set(normalized.toLowerCase());
+      picker.value = get();
+      regenerate(TYPING_DEBOUNCE);
+    });
+    hex.addEventListener("blur", () => (hex.value = get()));
+  };
+  wireColor("eye-frame", "Eye frame", () => state.eyeFrame, (v) => (state.eyeFrame = v), true);
+  wireColor("eye-ball", "Eye ball", () => state.eyeBall, (v) => (state.eyeBall = v), true);
+  wireColor("grad-from", "Gradient start", () => state.gradientFrom, (v) => (state.gradientFrom = v));
+  wireColor("grad-to", "Gradient end", () => state.gradientTo, (v) => (state.gradientTo = v));
+
+  const moduleShapeSel = $<HTMLSelectElement>("#module-shape");
+  moduleShapeSel.addEventListener("change", () => {
+    state.moduleShape = moduleShapeSel.value as State["moduleShape"];
+    regenerate();
+  });
+  const frameShapeSel = $<HTMLSelectElement>("#eye-frame-shape");
+  frameShapeSel.addEventListener("change", () => {
+    state.eyeFrameShape = frameShapeSel.value as State["eyeFrameShape"];
+    regenerate();
+  });
+  const ballShapeSel = $<HTMLSelectElement>("#eye-ball-shape");
+  ballShapeSel.addEventListener("change", () => {
+    state.eyeBallShape = ballShapeSel.value as State["eyeBallShape"];
+    regenerate();
+  });
+
+  const gradientKindSel = $<HTMLSelectElement>("#gradient-kind");
+  gradientKindSel.addEventListener("change", () => {
+    state.gradientKind = gradientKindSel.value as State["gradientKind"];
+    syncGradientRows();
+    regenerate();
+  });
+  const gradientAngle = $<HTMLInputElement>("#gradient-angle");
+  gradientAngle.addEventListener("input", () => {
+    state.gradientAngle = Number(gradientAngle.value);
+    $("#gradient-angle-out").textContent = gradientAngle.value;
+    regenerate();
+  });
 
   const quiet = $<HTMLInputElement>("#quiet");
   quiet.addEventListener("input", () => {

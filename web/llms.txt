@@ -1,0 +1,13 @@
+# QR-GO
+
+> Free QR code generator that runs entirely in the browser: a zero-dependency Go encoder compiled to WebAssembly. Supports Wi-Fi, vCard, URL, SMS, email, event, location and plain-text payloads, custom colors, gradients, module and eye shapes, centered logos, and PNG/SVG export. Nothing is uploaded; all encoding happens client-side.
+
+The app at https://qr.nachop.dev/ is a single page. Pick a content type, fill the form, style the code, then download or copy PNG/SVG. Advanced options expose error correction level (L/M/Q/H), QR version, mask pattern and ECI policy.
+
+## Source
+
+- [nachop51/qr-go on GitHub](https://github.com/nachop51/qr-go): Go library, CLI (`qrgo`) and the wasm build behind this site
+
+## Author
+
+- [Ignacio Pankowski](https://github.com/nachop51)

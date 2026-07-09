@@ -12,6 +12,7 @@ import (
 
 	qr "github.com/nachop51/qr-go"
 	"github.com/nachop51/qr-go/render/png"
+	"github.com/nachop51/qr-go/render/style"
 	"github.com/nachop51/qr-go/render/svg"
 	"github.com/nachop51/qr-go/render/terminal"
 )
@@ -134,6 +135,78 @@ func TestBuildRendererTerminalRejectsLogo(t *testing.T) {
 	o := options{logo: "logo.png", quiet: -1}
 	if _, err := buildRenderer("terminal", &o, &buf); err == nil {
 		t.Fatalf("want error: terminal renderer cannot take a logo")
+	}
+}
+
+func TestBuildRendererTerminalRejectsStyle(t *testing.T) {
+	var buf bytes.Buffer
+	o := options{eyeShape: "circle", quiet: -1}
+	if _, err := buildRenderer("terminal", &o, &buf); err == nil {
+		t.Fatalf("want error: terminal renderer cannot take style flags")
+	}
+}
+
+func TestParseStyle(t *testing.T) {
+	// --eye-shape sets both; the specific flags override individually.
+	o := options{moduleShape: "dot", eyeShape: "circle", eyeBallShape: "rounded",
+		gradient: "linear:#0f172a:#7f1d1d:45"}
+	st, err := parseStyle(&o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.module != style.ModuleDot || st.frame != style.EyeCircle || st.ball != style.EyeRounded {
+		t.Fatalf("shapes = %v/%v/%v", st.module, st.frame, st.ball)
+	}
+	if st.gradKind != style.GradientLinear || st.gradFrom != "#0f172a" || st.gradTo != "#7f1d1d" || st.gradAngle != 45 {
+		t.Fatalf("gradient = %+v", st)
+	}
+
+	for _, bad := range []options{
+		{moduleShape: "blob"},
+		{eyeShape: "blob"},
+		{eyeFrameShape: "blob"},
+		{gradient: "linear:#000"},          // missing <to>
+		{gradient: "conic:#000:#111"},      // unknown kind
+		{gradient: "radial:#000:#111:45"},  // radial takes no angle
+		{gradient: "linear:#000:#111:top"}, // non-numeric angle
+	} {
+		if _, err := parseStyle(&bad); err == nil {
+			t.Errorf("expected error for %+v", bad)
+		}
+	}
+}
+
+// Styled flags survive the full CLI pipeline and still produce a decodable PNG.
+func TestStyledPNGRoundTrip(t *testing.T) {
+	const payload = "https://example.com/qrgo-styled"
+
+	var buf bytes.Buffer
+	o := options{dark: "#000000", light: "#ffffff", width: 600, height: 600, quiet: -1,
+		moduleShape: "rounded", eyeShape: "circle", eyeFrame: "#1d4ed8", eyeBall: "#b91c1c"}
+	renderer, err := buildRenderer("png", &o, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := qr.NewTextBuilder(payload).
+		SetErrorCorrectionLevel(qr.CorrectionLevelHigh).
+		SetRenderer(renderer).Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := code.Render(); err != nil {
+		t.Fatal(err)
+	}
+	img, _, err := image.Decode(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bmp, _ := gozxing.NewBinaryBitmapFromImage(img)
+	res, err := qrcode.NewQRCodeReader().Decode(bmp, nil)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if res.GetText() != payload {
+		t.Fatalf("decoded %q, want %q", res.GetText(), payload)
 	}
 }
 

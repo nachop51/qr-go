@@ -35,6 +35,13 @@
     <meta property="article:published_time" content="2026-07-07" />
 
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link
+      rel="preload"
+      href="./fonts/DepartureMono-Regular.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <link rel="stylesheet" href="./styles.css" />
     <script type="module" src="./src/main.ts" defer></script>
     <script type="application/ld+json">
@@ -68,7 +75,9 @@
         QR-GO: free QR code generator for Wi-Fi, vCard, URL, PNG and SVG
       </h1>
       <a class="wordmark" href="/" aria-label="QR-GO home">
-        <svg id="wordmark" role="img" aria-label="QR-GO"></svg>
+        <!-- Intrinsic size matches what drawWordmark computes for "QR·GO", so
+             the masthead doesn't grow (layout shift) once JS fills it in. -->
+        <svg id="wordmark" role="img" aria-label="QR-GO" width="198" height="42"></svg>
       </a>
       <p class="tagline">
         100% Go &middot; compiled to WebAssembly &middot; runs in your browser &middot;
@@ -80,9 +89,32 @@
       <section class="controls" aria-label="QR code options">
         <div class="panel">
           <h2 class="eyebrow">Content</h2>
-          <div class="tabs" id="tabs" role="tablist" aria-label="Content type"></div>
-          <div id="content-panel" role="tabpanel">
-            <form id="content-form" autocomplete="off" spellcheck="false"></form>
+          <!-- Static copy of the boot state (Text tab + its form), so the first
+               paint already has the final layout; buildTabs/buildForm re-render
+               the same markup in place, which would otherwise register as a
+               layout shift on slow devices. -->
+          <div class="tabs" id="tabs" role="tablist" aria-label="Content type">
+            <button type="button" role="tab" id="tab-text" data-type="text" aria-controls="content-panel" aria-selected="true">Text</button>
+            <button type="button" role="tab" id="tab-url" data-type="url" aria-controls="content-panel" aria-selected="false" tabindex="-1">URL</button>
+            <button type="button" role="tab" id="tab-wifi" data-type="wifi" aria-controls="content-panel" aria-selected="false" tabindex="-1">Wi-Fi</button>
+            <button type="button" role="tab" id="tab-vcard" data-type="vcard" aria-controls="content-panel" aria-selected="false" tabindex="-1">Contact</button>
+            <button type="button" role="tab" id="tab-event" data-type="event" aria-controls="content-panel" aria-selected="false" tabindex="-1">Event</button>
+            <button type="button" role="tab" id="tab-tel" data-type="tel" aria-controls="content-panel" aria-selected="false" tabindex="-1">Call</button>
+            <button type="button" role="tab" id="tab-sms" data-type="sms" aria-controls="content-panel" aria-selected="false" tabindex="-1">SMS</button>
+            <button type="button" role="tab" id="tab-geo" data-type="geo" aria-controls="content-panel" aria-selected="false" tabindex="-1">Location</button>
+            <button type="button" role="tab" id="tab-email" data-type="email" aria-controls="content-panel" aria-selected="false" tabindex="-1">Email</button>
+          </div>
+          <div id="content-panel" role="tabpanel" aria-labelledby="tab-text">
+            <form id="content-form" autocomplete="off" spellcheck="false">
+              <div class="field-row" style="--i: 0">
+                <label for="f-text">Text</label>
+                <textarea
+                  id="f-text"
+                  rows="3"
+                  placeholder="Anything. Plain text ends up in the code verbatim"
+                ></textarea>
+              </div>
+            </form>
           </div>
         </div>
 
@@ -135,8 +167,12 @@
           </div>
 
           <div class="field-row" style="--i: 1">
-            <label for="quiet">Margin (quiet zone) <output id="quiet-out">2</output> modules</label>
-            <input type="range" id="quiet" min="0" max="8" value="2" />
+            <label for="module-shape">Module shape</label>
+            <select id="module-shape">
+              <option value="square" selected>Square</option>
+              <option value="rounded">Rounded</option>
+              <option value="dot">Dots</option>
+            </select>
           </div>
 
           <div class="field-row" style="--i: 2">
@@ -160,10 +196,151 @@
             </div>
           </div>
 
-          <div class="field-row" style="--i: 3">
-            <label for="png-size">PNG export size <output id="png-size-out">1280</output> px</label>
-            <input type="range" id="png-size" min="256" max="2048" step="64" value="1280" />
-          </div>
+          <details class="advanced" id="more-style">
+            <summary>
+              More style <span class="hint-inline">gradient, eyes, margin, export size</span>
+            </summary>
+            <div class="field-row">
+              <label for="gradient-kind">Gradient</label>
+              <select id="gradient-kind">
+                <option value="none" selected>None</option>
+                <option value="linear">Linear</option>
+                <option value="radial">Radial</option>
+              </select>
+            </div>
+
+            <div class="field-row two hidden" id="gradient-colors">
+              <div class="swatch-field">
+                <label for="grad-from-hex">Gradient start</label>
+                <div class="swatch-combo">
+                  <button
+                    type="button"
+                    class="swatch-btn"
+                    id="grad-from"
+                    data-value="#1a1a1e"
+                    aria-label="Gradient start color picker"
+                  ></button>
+                  <input
+                    type="text"
+                    id="grad-from-hex"
+                    value="#1a1a1e"
+                    maxlength="7"
+                    spellcheck="false"
+                    autocapitalize="off"
+                    autocomplete="off"
+                  />
+                </div>
+              </div>
+              <div class="swatch-field">
+                <label for="grad-to-hex">Gradient end</label>
+                <div class="swatch-combo">
+                  <button
+                    type="button"
+                    class="swatch-btn"
+                    id="grad-to"
+                    data-value="#4338ca"
+                    aria-label="Gradient end color picker"
+                  ></button>
+                  <input
+                    type="text"
+                    id="grad-to-hex"
+                    value="#4338ca"
+                    maxlength="7"
+                    spellcheck="false"
+                    autocapitalize="off"
+                    autocomplete="off"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="field-row hidden" id="gradient-angle-row">
+              <label for="gradient-angle">
+                Gradient angle <output id="gradient-angle-out">45</output>&deg;
+              </label>
+              <input type="range" id="gradient-angle" min="0" max="360" step="15" value="45" />
+            </div>
+
+            <div class="field-row two">
+              <div class="adv-field">
+                <label for="eye-frame-shape">Eye frame</label>
+                <select id="eye-frame-shape">
+                  <option value="square" selected>Square</option>
+                  <option value="rounded">Rounded</option>
+                  <option value="circle">Circle</option>
+                </select>
+              </div>
+              <div class="adv-field">
+                <label for="eye-ball-shape">Eye ball</label>
+                <select id="eye-ball-shape">
+                  <option value="square" selected>Square</option>
+                  <option value="rounded">Rounded</option>
+                  <option value="circle">Circle</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field-row two">
+              <div class="swatch-field">
+                <label for="eye-frame-hex">Eye frame color</label>
+                <div class="swatch-combo">
+                  <button
+                    type="button"
+                    class="swatch-btn"
+                    id="eye-frame"
+                    data-value="#1a1a1e"
+                    aria-label="Eye frame color picker"
+                  ></button>
+                  <input
+                    type="text"
+                    id="eye-frame-hex"
+                    value=""
+                    placeholder="auto"
+                    maxlength="7"
+                    spellcheck="false"
+                    autocapitalize="off"
+                    autocomplete="off"
+                  />
+                </div>
+              </div>
+              <div class="swatch-field">
+                <label for="eye-ball-hex">Eye ball color</label>
+                <div class="swatch-combo">
+                  <button
+                    type="button"
+                    class="swatch-btn"
+                    id="eye-ball"
+                    data-value="#1a1a1e"
+                    aria-label="Eye ball color picker"
+                  ></button>
+                  <input
+                    type="text"
+                    id="eye-ball-hex"
+                    value=""
+                    placeholder="auto"
+                    maxlength="7"
+                    spellcheck="false"
+                    autocapitalize="off"
+                    autocomplete="off"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="field-row">
+              <label for="quiet">
+                Margin (quiet zone) <output id="quiet-out">2</output> modules
+              </label>
+              <input type="range" id="quiet" min="0" max="8" value="2" />
+            </div>
+
+            <div class="field-row">
+              <label for="png-size">
+                PNG export size <output id="png-size-out">1280</output> px
+              </label>
+              <input type="range" id="png-size" min="256" max="2048" step="64" value="1280" />
+            </div>
+          </details>
 
           <details class="advanced">
             <summary>Advanced</summary>

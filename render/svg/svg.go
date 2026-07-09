@@ -7,12 +7,15 @@ import (
 	"image"
 	"image/png"
 	"io"
+	"math"
 	"os"
+	"strconv"
 	"strings"
 
 	xdraw "golang.org/x/image/draw"
 
 	"github.com/nachop51/qr-go/render"
+	"github.com/nachop51/qr-go/render/style"
 )
 
 type SVG struct {
@@ -23,6 +26,15 @@ type SVG struct {
 	module      int
 	logo        image.Image
 	logoModules int
+	moduleShape style.ModuleShape
+	frameShape  style.EyeShape
+	ballShape   style.EyeShape
+	eyeFrame    string
+	eyeBall     string
+	gradient    style.GradientKind
+	gradFrom    string
+	gradTo      string
+	gradAngle   float64
 }
 
 func New() SVG {
@@ -40,6 +52,49 @@ func (s SVG) Dark(c string) SVG      { s.dark = c; return s }
 func (s SVG) Light(c string) SVG     { s.light = c; return s }
 func (s SVG) Quiet(n int) SVG        { s.quiet = n; return s }
 func (s SVG) Module(n int) SVG       { s.module = n; return s }
+
+// ModuleShape sets how data modules are drawn. Styled shapes assume the grid
+// is a real QR code (the three finder eyes are located geometrically).
+func (s SVG) ModuleShape(m style.ModuleShape) SVG { s.moduleShape = m; return s }
+
+// EyeShape sets both the finder frame and ball shape at once.
+func (s SVG) EyeShape(e style.EyeShape) SVG { s.frameShape, s.ballShape = e, e; return s }
+
+// EyeFrameShape sets the shape of the 7x7 finder ring only.
+func (s SVG) EyeFrameShape(e style.EyeShape) SVG { s.frameShape = e; return s }
+
+// EyeBallShape sets the shape of the 3x3 finder pupil only.
+func (s SVG) EyeBallShape(e style.EyeShape) SVG { s.ballShape = e; return s }
+
+// EyeFrame colors the finder rings. Empty follows the module color (or
+// gradient, when one is set).
+func (s SVG) EyeFrame(c string) SVG { s.eyeFrame = c; return s }
+
+// EyeBall colors the finder pupils. Empty follows the module color (or
+// gradient, when one is set).
+func (s SVG) EyeBall(c string) SVG { s.eyeBall = c; return s }
+
+// GradientLinear fills the modules with a two-stop linear gradient. The angle
+// is in degrees: 0 runs left to right, 90 top to bottom.
+func (s SVG) GradientLinear(from, to string, angleDeg float64) SVG {
+	s.gradient, s.gradFrom, s.gradTo, s.gradAngle = style.GradientLinear, from, to, angleDeg
+	return s
+}
+
+// GradientRadial fills the modules with a two-stop radial gradient from the
+// centre of the code.
+func (s SVG) GradientRadial(from, to string) SVG {
+	s.gradient, s.gradFrom, s.gradTo = style.GradientRadial, from, to
+	return s
+}
+
+// styled reports whether any option moves rendering off the fast square path.
+func (s SVG) styled() bool {
+	return s.moduleShape != style.ModuleSquare ||
+		s.frameShape != style.EyeSquare || s.ballShape != style.EyeSquare ||
+		s.eyeFrame != "" || s.eyeBall != "" ||
+		s.gradient != style.GradientNone
+}
 
 // Logo overlays img centred on the code, embedded as a data URI. Its span
 // defaults to the largest size the code's error-correction level can afford
@@ -85,6 +140,10 @@ func (s SVG) markup(g render.Grid) string {
 	totalModules := g.Size() + 2*quiet
 	size := totalModules * module
 
+	if s.styled() {
+		return s.styledMarkup(g, module, quiet, size)
+	}
+
 	var sb strings.Builder
 	fmt.Fprintf(&sb, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" width="%d" height="%d" shape-rendering="crispEdges">`, size, size, size, size)
 	fmt.Fprintf(&sb, `<rect width="%d" height="%d" fill="%s"/>`, size, size, s.light)
@@ -119,6 +178,140 @@ func (s SVG) markup(g render.Grid) string {
 
 	sb.WriteString(`</svg>`)
 	return sb.String()
+}
+
+// styledMarkup renders shaped modules and whole-shape finder eyes. Unlike the
+// fast path it omits shape-rendering="crispEdges", which would destroy the
+// anti-aliasing that curves depend on, and draws each of the three finder
+// eyes as one ring path plus one pupil path instead of per-module squares.
+func (s SVG) styledMarkup(g render.Grid, module, quiet, size int) string {
+	s.warnContrast()
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" width="%d" height="%d">`, size, size, size, size)
+	fmt.Fprintf(&sb, `<rect width="%d" height="%d" fill="%s"/>`, size, size, s.light)
+
+	moduleFill := s.dark
+	if s.gradient != style.GradientNone {
+		s.writeGradient(&sb, size)
+		moduleFill = "url(#qrgo-gradient)"
+	}
+	frameFill := s.eyeFrame
+	if frameFill == "" {
+		frameFill = moduleFill
+	}
+	ballFill := s.eyeBall
+	if ballFill == "" {
+		ballFill = moduleFill
+	}
+
+	p := &svgPath{sb: &sb, scale: float64(module), off: float64(quiet)}
+	n := g.Size()
+
+	sb.WriteString(`<path fill="` + moduleFill + `" d="`)
+	for y := range n {
+		for x := range n {
+			if !g.IsDark(x, y) || style.InEye(x, y, n) {
+				continue
+			}
+			var c style.Corners
+			if s.moduleShape == style.ModuleRounded {
+				c = style.CornerMask(g, x, y)
+			}
+			style.AddModule(p, float64(x), float64(y), s.moduleShape, c)
+		}
+	}
+	sb.WriteString(`"/>`)
+
+	eyes := style.EyeRects(n)
+	sb.WriteString(`<path fill="` + frameFill + `" d="`)
+	for _, e := range eyes {
+		style.AddEyeFrame(p, e, s.frameShape)
+	}
+	sb.WriteString(`"/>`)
+	sb.WriteString(`<path fill="` + ballFill + `" d="`)
+	for _, e := range eyes {
+		style.AddEyeBall(p, e, s.ballShape)
+	}
+	sb.WriteString(`"/>`)
+
+	if s.logo != nil {
+		if mods := render.ResolveLogo(g, s.logoModules); mods > 0 {
+			s.drawLogo(&sb, n, quiet, module, mods)
+		}
+	}
+
+	sb.WriteString(`</svg>`)
+	return sb.String()
+}
+
+// warnContrast flags styled color choices likely to break scanning. SVG
+// colors are arbitrary CSS strings, so only simple hex values are checked;
+// anything else is skipped silently.
+func (s SVG) warnContrast() {
+	bg, ok := style.ParseHex(s.light)
+	if !ok {
+		return
+	}
+	check := func(name, c string) {
+		if col, ok := style.ParseHex(c); ok {
+			style.WarnContrast(name, col, bg)
+		}
+	}
+	if s.gradient != style.GradientNone {
+		check("gradient start color", s.gradFrom)
+		check("gradient end color", s.gradTo)
+	} else {
+		check("module color", s.dark)
+	}
+	if s.eyeFrame != "" {
+		check("eye frame color", s.eyeFrame)
+	}
+	if s.eyeBall != "" {
+		check("eye ball color", s.eyeBall)
+	}
+}
+
+// writeGradient emits the <defs> block for the module gradient, spanning the
+// whole image in user space so all three paint groups share one ramp.
+func (s SVG) writeGradient(sb *strings.Builder, size int) {
+	sb.WriteString(`<defs>`)
+	if s.gradient == style.GradientRadial {
+		// Radius reaches the corners so no module clamps to the end stop early.
+		r := float64(size) * math.Sqrt2 / 2
+		fmt.Fprintf(sb, `<radialGradient id="qrgo-gradient" gradientUnits="userSpaceOnUse" cx="%d" cy="%d" r="%s">`,
+			size/2, size/2, fmtNum(r))
+		fmt.Fprintf(sb, `<stop offset="0" stop-color="%s"/><stop offset="1" stop-color="%s"/></radialGradient>`, s.gradFrom, s.gradTo)
+	} else {
+		rad := s.gradAngle * math.Pi / 180
+		c := float64(size) / 2
+		fmt.Fprintf(sb, `<linearGradient id="qrgo-gradient" gradientUnits="userSpaceOnUse" x1="%s" y1="%s" x2="%s" y2="%s">`,
+			fmtNum(c*(1-math.Cos(rad))), fmtNum(c*(1-math.Sin(rad))),
+			fmtNum(c*(1+math.Cos(rad))), fmtNum(c*(1+math.Sin(rad))))
+		fmt.Fprintf(sb, `<stop offset="0" stop-color="%s"/><stop offset="1" stop-color="%s"/></linearGradient>`, s.gradFrom, s.gradTo)
+	}
+	sb.WriteString(`</defs>`)
+}
+
+// svgPath writes style.Path commands as SVG path data, mapping module units
+// to pixels: px = (v + quiet) * module.
+type svgPath struct {
+	sb         *strings.Builder
+	scale, off float64
+}
+
+func (p *svgPath) t(v float64) string { return fmtNum((v + p.off) * p.scale) }
+
+func (p *svgPath) MoveTo(x, y float64) { p.sb.WriteString("M" + p.t(x) + " " + p.t(y)) }
+func (p *svgPath) LineTo(x, y float64) { p.sb.WriteString("L" + p.t(x) + " " + p.t(y)) }
+func (p *svgPath) CubeTo(c1x, c1y, c2x, c2y, x, y float64) {
+	p.sb.WriteString("C" + p.t(c1x) + " " + p.t(c1y) + " " + p.t(c2x) + " " + p.t(c2y) + " " + p.t(x) + " " + p.t(y))
+}
+func (p *svgPath) Close() { p.sb.WriteString("Z") }
+
+// fmtNum renders a coordinate with at most two decimals and no trailing zeros.
+func fmtNum(v float64) string {
+	return strconv.FormatFloat(math.Round(v*100)/100, 'f', -1, 64)
 }
 
 // drawLogo clears a module-aligned square region and embeds the logo inside it.

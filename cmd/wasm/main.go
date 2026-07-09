@@ -22,6 +22,15 @@
 //	  logoModules: int,                             // logo span in modules; omit or 0 = max the EC level allows
 //	  version:     int,                             // 1-40; omit or 0 = auto (errors if the data doesn't fit)
 //	  mask:        int,                             // 0-7; omit or -1 = auto (best-scoring pattern)
+//	  moduleShape: "square" | "rounded" | "dot",    // default "square"
+//	  eyeShape:      "square" | "rounded" | "circle", // finder frame + ball at once
+//	  eyeFrameShape: "square" | "rounded" | "circle", // overrides eyeShape for the frame
+//	  eyeBallShape:  "square" | "rounded" | "circle", // overrides eyeShape for the ball
+//	  eyeFrame:    "#rrggbb",                       // finder frame color; omit = follow dark/gradient
+//	  eyeBall:     "#rrggbb",                       // finder ball color; omit = follow dark/gradient
+//	  gradient:    {kind: "linear" | "radial",      // module fill gradient
+//	                from: "#rrggbb", to: "#rrggbb",
+//	                angle: number},                 // degrees, linear only (0 = left to right)
 //	}
 //
 // PNG returns data as a Uint8Array, SVG as a string.
@@ -41,6 +50,7 @@ import (
 	"github.com/nachop51/qr-go/content"
 	"github.com/nachop51/qr-go/render"
 	"github.com/nachop51/qr-go/render/png"
+	"github.com/nachop51/qr-go/render/style"
 	"github.com/nachop51/qr-go/render/svg"
 )
 
@@ -125,6 +135,59 @@ func parseHex(s string) (color.Color, error) {
 	return color.RGBA{R: r, G: g, B: b, A: 0xff}, nil
 }
 
+// styleSpec carries the parsed style options; colors stay raw strings so the
+// PNG branch converts with parseHex while SVG passes them through.
+type styleSpec struct {
+	module           style.ModuleShape
+	frame, ball      style.EyeShape
+	eyeFrame         string
+	eyeBall          string
+	gradKind         style.GradientKind
+	gradFrom, gradTo string
+	gradAngle        float64
+}
+
+func styleOpts(v js.Value) (styleSpec, error) {
+	var s styleSpec
+	var err error
+	if s.module, err = style.ParseModuleShape(str(v, "moduleShape", "")); err != nil {
+		return s, err
+	}
+	base, err := style.ParseEyeShape(str(v, "eyeShape", ""))
+	if err != nil {
+		return s, err
+	}
+	s.frame, s.ball = base, base
+	if raw := str(v, "eyeFrameShape", ""); raw != "" {
+		if s.frame, err = style.ParseEyeShape(raw); err != nil {
+			return s, err
+		}
+	}
+	if raw := str(v, "eyeBallShape", ""); raw != "" {
+		if s.ball, err = style.ParseEyeShape(raw); err != nil {
+			return s, err
+		}
+	}
+	s.eyeFrame = str(v, "eyeFrame", "")
+	s.eyeBall = str(v, "eyeBall", "")
+
+	if g := v.Get("gradient"); g.Type() == js.TypeObject {
+		if s.gradKind, err = style.ParseGradientKind(str(g, "kind", "")); err != nil {
+			return s, err
+		}
+		if s.gradKind != style.GradientNone {
+			s.gradFrom, s.gradTo = str(g, "from", ""), str(g, "to", "")
+			if s.gradFrom == "" || s.gradTo == "" {
+				return s, fmt.Errorf("gradient needs from and to colors")
+			}
+			if a := g.Get("angle"); a.Type() == js.TypeNumber {
+				s.gradAngle = a.Float()
+			}
+		}
+	}
+	return s, nil
+}
+
 func logoImage(v js.Value) (image.Image, error) {
 	p := v.Get("logo")
 	if p.IsUndefined() || p.IsNull() {
@@ -146,6 +209,11 @@ func generate(opts js.Value) any {
 	}
 
 	logo, err := logoImage(opts)
+	if err != nil {
+		return errResult("%v", err)
+	}
+
+	st, err := styleOpts(opts)
 	if err != nil {
 		return errResult("%v", err)
 	}
@@ -178,6 +246,36 @@ func generate(opts js.Value) any {
 		if logo != nil {
 			r = r.Logo(logo).LogoModules(num(opts, "logoModules", 0))
 		}
+		r = r.ModuleShape(st.module).EyeFrameShape(st.frame).EyeBallShape(st.ball)
+		if st.eyeFrame != "" {
+			col, err := parseHex(st.eyeFrame)
+			if err != nil {
+				return errResult("eyeFrame: %v", err)
+			}
+			r = r.EyeFrame(col)
+		}
+		if st.eyeBall != "" {
+			col, err := parseHex(st.eyeBall)
+			if err != nil {
+				return errResult("eyeBall: %v", err)
+			}
+			r = r.EyeBall(col)
+		}
+		if st.gradKind != style.GradientNone {
+			from, err := parseHex(st.gradFrom)
+			if err != nil {
+				return errResult("gradient: %v", err)
+			}
+			to, err := parseHex(st.gradTo)
+			if err != nil {
+				return errResult("gradient: %v", err)
+			}
+			if st.gradKind == style.GradientRadial {
+				r = r.GradientRadial(from, to)
+			} else {
+				r = r.GradientLinear(from, to, st.gradAngle)
+			}
+		}
 		renderer = r
 	case "svg":
 		r := svg.New()
@@ -195,6 +293,13 @@ func generate(opts js.Value) any {
 		}
 		if logo != nil {
 			r = r.Logo(logo).LogoModules(num(opts, "logoModules", 0))
+		}
+		r = r.ModuleShape(st.module).EyeFrameShape(st.frame).EyeBallShape(st.ball).
+			EyeFrame(st.eyeFrame).EyeBall(st.eyeBall)
+		if st.gradKind == style.GradientRadial {
+			r = r.GradientRadial(st.gradFrom, st.gradTo)
+		} else if st.gradKind == style.GradientLinear {
+			r = r.GradientLinear(st.gradFrom, st.gradTo, st.gradAngle)
 		}
 		renderer = r
 	default:

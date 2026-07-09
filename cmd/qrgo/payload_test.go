@@ -89,6 +89,24 @@ func TestBuildPayload(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "geo latitude out of range",
+			typ:     "geo",
+			args:    []string{"90.1", "2.0"},
+			wantErr: true,
+		},
+		{
+			name:    "geo longitude out of range",
+			typ:     "geo",
+			args:    []string{"48.85", "-180.5"},
+			wantErr: true,
+		},
+		{
+			name:    "geo NaN rejected",
+			typ:     "geo",
+			args:    []string{"NaN", "2.0"},
+			wantErr: true,
+		},
+		{
 			name:     "wifi flags",
 			typ:      "wifi",
 			opts:     options{ssid: "home", pass: "s3cr3t"},

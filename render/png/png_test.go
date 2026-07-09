@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/nachop51/qr-go/render"
+	"github.com/nachop51/qr-go/render/style"
 )
 
 // budgetGrid is a dark grid that also advertises a logo budget.
@@ -311,6 +312,75 @@ func TestDrawQuietFillsBackgroundAndPreservesModules(t *testing.T) {
 
 func rgbaString(c color.RGBA) string {
 	return fmt.Sprintf("rgba(%d,%d,%d,%d)", c.R, c.G, c.B, c.A)
+}
+
+// Styled rendering paints eyes as whole shapes with their own colors and
+// shapes dots inside their module cells.
+func TestPNGStyledPixels(t *testing.T) {
+	red := color.RGBA{200, 20, 20, 255}
+	green := color.RGBA{20, 160, 20, 255}
+
+	var buf bytes.Buffer
+	err := New().Writer(&buf).Quiet(0).Width(210).Height(210).
+		ModuleShape(style.ModuleDot).
+		EyeFrame(red).
+		EyeBall(green).
+		Render(fakeGrid{n: 21})
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := png.Decode(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// scale = 210/21 = 10. Eye frame ring: module (0,0) centre -> (5,5).
+	assertColor(t, img, 5, 5, red, "eye frame")
+	// Eye ball: 3x3 centred at module (3.5, 3.5) -> (35,35).
+	assertColor(t, img, 35, 35, green, "eye ball")
+	// Dark data module (8,0): dot centre (85,5) is dark...
+	assertColor(t, img, 85, 5, color.RGBA{0, 0, 0, 255}, "dot centre")
+	// ...but its corner (80,0) stays background white.
+	assertColor(t, img, 80, 0, color.RGBA{255, 255, 255, 255}, "dot corner")
+	// Light module (9,0): centre must stay background.
+	assertColor(t, img, 95, 5, color.RGBA{255, 255, 255, 255}, "light module")
+}
+
+func assertColor(t *testing.T, img image.Image, x, y int, want color.RGBA, what string) {
+	t.Helper()
+	got := color.RGBAModel.Convert(img.At(x, y)).(color.RGBA)
+	near := func(a, b uint8) bool { d := int(a) - int(b); return d > -16 && d < 16 }
+	if !near(got.R, want.R) || !near(got.G, want.G) || !near(got.B, want.B) {
+		t.Errorf("%s at (%d,%d): got %s, want ~%s", what, x, y, rgbaString(got), rgbaString(want))
+	}
+}
+
+// A gradient interpolates across the image: opposite corners of the code take
+// distinct stop-leaning colors.
+func TestPNGGradientPixels(t *testing.T) {
+	from := color.RGBA{0, 0, 128, 255}
+	to := color.RGBA{128, 0, 0, 255}
+
+	var buf bytes.Buffer
+	err := New().Writer(&buf).Quiet(0).Width(210).Height(210).
+		GradientLinear(from, to, 45).
+		Render(budgetGrid{n: 21}) // all dark: every pixel painted
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := png.Decode(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tl := color.RGBAModel.Convert(img.At(2, 2)).(color.RGBA)
+	br := color.RGBAModel.Convert(img.At(207, 207)).(color.RGBA)
+	if !(tl.B > tl.R) {
+		t.Errorf("top-left should lean to the blue start stop: %s", rgbaString(tl))
+	}
+	if !(br.R > br.B) {
+		t.Errorf("bottom-right should lean to the red end stop: %s", rgbaString(br))
+	}
 }
 
 // Compile-time check: PNG satisfies the full renderer contract.

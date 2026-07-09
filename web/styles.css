@@ -581,12 +581,14 @@ legend {
 /* Swatch + hex read as one control: the color well is a flat pixel square,
    the hex field is editable and syncs both ways. */
 .swatch-combo {
+  position: relative; /* anchors the caret trigger inside the hex field */
   display: grid;
   grid-template-columns: 42px 1fr;
 }
 
 /* Swatch button: the current ink as a chip behind a 4px card frame (the old
-   native input's padding, kept). Hover/open turn the frame blue. */
+   native input's padding, kept). Hover/open turn the frame blue. The hairline
+   past the card ring keeps near-card colors (white background swatch) visible. */
 .swatch-btn {
   inline-size: 100%;
   block-size: 100%;
@@ -594,7 +596,9 @@ legend {
   border: var(--line);
   border-radius: 2px 0 0 2px;
   background: var(--swatch, var(--ink));
-  box-shadow: inset 0 0 0 4px var(--card);
+  box-shadow:
+    inset 0 0 0 4px var(--card),
+    inset 0 0 0 5px color-mix(in srgb, var(--ink) 25%, transparent);
   cursor: pointer;
 }
 
@@ -603,6 +607,41 @@ legend {
   box-shadow:
     inset 0 0 0 2px var(--card),
     inset 0 0 0 4px var(--blue);
+}
+
+/* Caret trigger at the hex field's right edge: the conspicuous way into the
+   ink chart (the bare swatch reads as a static preview to first-time users).
+   Same glyph grammar as select::picker-icon: ▾ muted, ▴ blue while open.
+   Transparent and flush with the field so the input's border stays visible;
+   the full-height 40px column is the hit target. */
+.swatch-caret {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: 13px/1 var(--mono);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.swatch-caret::before {
+  content: "▾";
+}
+
+.swatch-caret:hover {
+  color: var(--blue);
+}
+
+.swatch-combo:has(.swatch-btn[aria-expanded="true"]) .swatch-caret {
+  color: var(--blue);
+}
+
+.swatch-combo:has(.swatch-btn[aria-expanded="true"]) .swatch-caret::before {
+  content: "▴";
 }
 
 /* Ink chart: the retro palette popover behind each swatch. A two-ink card
@@ -690,6 +729,7 @@ legend {
   margin-left: -2px;
   border-radius: 0 2px 2px 0;
   font-size: 13px;
+  padding-right: 44px; /* room for the caret trigger */
 }
 
 /* Range sliders: a hairline track and a square pixel thumb, same grammar as
@@ -815,15 +855,17 @@ input[type="range"]:active::-moz-range-thumb {
   }
 }
 
-/* Advanced options fold: dashed border marks collapsibles, same as payload. */
+/* Advanced options fold: dashed border marks collapsibles, same as payload.
+   The padding lives on the summary and content, not the details, so the whole
+   header bar (border to border) is the click target. */
 .advanced {
   border: 2px dashed var(--muted);
   border-radius: 2px;
-  padding: 10px 12px;
   margin-top: 18px;
 }
 
 .advanced summary {
+  padding: 10px 12px;
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.1em;
@@ -838,11 +880,15 @@ input[type="range"]:active::-moz-range-thumb {
 }
 
 .advanced[open] summary {
-  margin-bottom: 14px;
+  margin-bottom: 4px;
+}
+
+.advanced::details-content {
+  padding: 0 12px;
 }
 
 .advanced .field-row:last-child {
-  margin-bottom: 4px;
+  margin-bottom: 14px;
 }
 
 .adv-field {
@@ -1114,10 +1160,10 @@ input[type="range"]:active::-moz-range-thumb {
 .payload {
   border: 2px dashed var(--muted);
   border-radius: 2px;
-  padding: 10px 12px;
 }
 
 .payload summary {
+  padding: 10px 12px;
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.1em;
@@ -1131,7 +1177,7 @@ input[type="range"]:active::-moz-range-thumb {
 }
 
 .payload pre {
-  margin: 10px 0 0;
+  margin: 10px 12px 0;
   font-family: var(--mono);
   font-size: 12px;
   white-space: pre-wrap;
@@ -1141,7 +1187,7 @@ input[type="range"]:active::-moz-range-thumb {
 
 .payload .link-btn {
   color: var(--blue);
-  margin-top: 10px;
+  margin: 10px 12px 12px;
 }
 
 /* --- colophon --- */

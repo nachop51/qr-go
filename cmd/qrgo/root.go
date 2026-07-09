@@ -1,12 +1,17 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"os"
 
 	qr "github.com/nachop51/qr-go"
 	"github.com/spf13/cobra"
 )
+
+// version is stamped by the release build via
+// -ldflags "-X main.version=v0.1.0"; plain "go install" builds show "dev".
+var version = "dev"
 
 // options holds every flag value. The render/output fields are bound to the
 // root's persistent flags (shared by every subcommand); the content fields are
@@ -49,6 +54,23 @@ type options struct {
 	logoModules int
 	noECI       bool
 	info        bool
+
+	// Styling (PNG/SVG only)
+	moduleShape   string
+	eyeShape      string
+	eyeFrameShape string
+	eyeBallShape  string
+	eyeFrame      string
+	eyeBall       string
+	gradient      string
+}
+
+// styleConfigured reports whether any style flag departs from the default
+// square look; the terminal renderer rejects these.
+func (o *options) styleConfigured() bool {
+	return (o.moduleShape != "" && o.moduleShape != "square") ||
+		o.eyeShape != "" || o.eyeFrameShape != "" || o.eyeBallShape != "" ||
+		o.eyeFrame != "" || o.eyeBall != "" || o.gradient != ""
 }
 
 const longDescription = `Generate QR codes from the terminal.
@@ -71,18 +93,65 @@ The output format is inferred from -o's extension (.png/.svg), or set with
 -f/--format. With no -o the code goes to stdout. Content can also arrive on
 stdin: echo "https://example.com" | qrgo -o code.png`
 
+// helpTemplate renders the root's help as usage/commands/flags first and the
+// long description last (the description lives at the end of usageTemplate).
+// Leaf subcommands keep cobra's default description-first layout.
+const helpTemplate = `{{if .HasAvailableSubCommands}}{{.UsageString}}{{else}}{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}
+
+{{end}}{{if or .Runnable .HasSubCommands}}{{.UsageString}}{{end}}{{end}}`
+
+// usageTemplate is cobra's default with two changes: for commands with
+// subcommands (only the root here) the long description renders between the
+// flags and the final help hint (helpTemplate skips its own description for
+// those commands), and on subcommands the inherited output/render flags are
+// replaced by a one-line pointer to the root help.
+const usageTemplate = `Usage:{{if .Runnable}}
+  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
+  {{.CommandPath}} [command]{{end}}{{if gt (len .Aliases) 0}}
+
+Aliases:
+  {{.NameAndAliases}}{{end}}{{if .HasExample}}
+
+Examples:
+{{.Example}}{{end}}{{if .HasAvailableSubCommands}}{{$cmds := .Commands}}{{if eq (len .Groups) 0}}
+
+Available Commands:{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{else}}{{range $group := .Groups}}
+
+{{.Title}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
+
+Additional Commands:{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
+
+Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+
+The shared output/render flags also apply; see "{{.Root.CommandPath}} help".{{end}}{{if .HasHelpSubCommands}}
+
+Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
+  {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}{{with .Long}}
+
+{{. | trimTrailingWhitespaces}}{{end}}
+
+Use "{{.CommandPath}} help <command>" for more information about a command.{{end}}
+`
+
 func newRootCmd() *cobra.Command {
 	o := &options{}
 
 	cmd := &cobra.Command{
 		Use:           "qrgo [text...] | qrgo <type> [args]",
 		Short:         "Generate QR codes from the terminal",
+		Version:       version,
 		Long:          longDescription,
 		Args:          cobra.ArbitraryArgs,
 		SilenceUsage:  true,
 		SilenceErrors: false,
 		RunE:          o.runRoot,
 	}
+	cmd.SetHelpTemplate(helpTemplate)
+	cmd.SetUsageTemplate(usageTemplate)
 
 	// Render/output flags are persistent so every content subcommand inherits
 	// them; they stay out of each subcommand's own (content-specific) flag list.
@@ -103,6 +172,13 @@ func newRootCmd() *cobra.Command {
 	f.BoolVar(&o.block, "block", false, "terminal: classic full-block style")
 	f.StringVar(&o.logo, "logo", "", "overlay a logo image (PNG/JPEG/GIF/WebP/SVG) on PNG/SVG output")
 	f.IntVar(&o.logoModules, "logo-modules", 0, "logo span in modules (0 = max the EC level allows)")
+	f.StringVar(&o.moduleShape, "module-shape", "square", "PNG/SVG module shape: square, rounded, or dot")
+	f.StringVar(&o.eyeShape, "eye-shape", "", "PNG/SVG finder eye shape (frame and ball): square, rounded, or circle")
+	f.StringVar(&o.eyeFrameShape, "eye-frame-shape", "", "finder frame shape (overrides --eye-shape)")
+	f.StringVar(&o.eyeBallShape, "eye-ball-shape", "", "finder ball shape (overrides --eye-shape)")
+	f.StringVar(&o.eyeFrame, "eye-frame", "", "finder frame color (default: --dark)")
+	f.StringVar(&o.eyeBall, "eye-ball", "", "finder ball color (default: --dark)")
+	f.StringVar(&o.gradient, "gradient", "", "module gradient: linear:<from>:<to>[:angle] or radial:<from>:<to>")
 	f.BoolVar(&o.noECI, "no-eci", false, "disable automatic ECI for text")
 	f.BoolVarP(&o.info, "info", "i", false, "print the encoding outcome (version, mask, segments) to stdout")
 
@@ -121,14 +197,30 @@ func (o *options) runRoot(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	}
 
-	return o.encode(cmd, "text", args, stdin)
+	return reportUsageError(cmd, o.encode(cmd, "text", args, stdin))
 }
 
 // runContent returns the RunE for a content subcommand of the given type.
 func (o *options) runContent(typ string) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		return o.encode(cmd, typ, args, o.maybeReadStdin(cmd, args))
+		return reportUsageError(cmd, o.encode(cmd, typ, args, o.maybeReadStdin(cmd, args)))
 	}
+}
+
+// reportUsageError prints a usageError followed by the command's usage, then
+// keeps cobra from repeating the bare error line. The root's SilenceUsage
+// blocks cobra's own usage-on-error for every subcommand, which is right for
+// runtime errors but not for a bad invocation. Other errors pass through.
+func reportUsageError(cmd *cobra.Command, err error) error {
+	var ue usageError
+	if !errors.As(err, &ue) {
+		return err
+	}
+	cmd.PrintErrln(cmd.ErrPrefix(), err.Error())
+	cmd.PrintErrln()
+	cmd.PrintErr(cmd.UsageString())
+	cmd.SilenceErrors = true
+	return err
 }
 
 // maybeReadStdin returns piped stdin when it could be the payload source.

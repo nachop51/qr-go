@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -72,11 +71,18 @@ func buildPayload(o *options, typ string, args []string, stdin []byte) (text str
 		lat, lng := o.lat, o.lng
 		if len(args) >= 2 {
 			if lat, err = strconv.ParseFloat(args[0], 64); err != nil {
-				return "", nil, false, fmt.Errorf("geo latitude %q: %w", args[0], err)
+				return "", nil, false, fmt.Errorf("geo: latitude %q is not a number", args[0])
 			}
 			if lng, err = strconv.ParseFloat(args[1], 64); err != nil {
-				return "", nil, false, fmt.Errorf("geo longitude %q: %w", args[1], err)
+				return "", nil, false, fmt.Errorf("geo: longitude %q is not a number", args[1])
 			}
+		}
+		// The negated form also rejects NaN, which fails every comparison.
+		if !(lat >= -90 && lat <= 90) {
+			return "", nil, false, fmt.Errorf("geo: latitude %v is outside [-90, 90]", lat)
+		}
+		if !(lng >= -180 && lng <= 180) {
+			return "", nil, false, fmt.Errorf("geo: longitude %v is outside [-180, 180]", lng)
 		}
 		return content.Geo(lat, lng), nil, false, nil
 
@@ -86,7 +92,7 @@ func buildPayload(o *options, typ string, args []string, stdin []byte) (text str
 			ssid = firstArg(args)
 		}
 		if ssid == "" {
-			return "", nil, false, errors.New("wifi: an SSID is required (--ssid or a positional argument)")
+			return "", nil, false, usageError{"wifi: an SSID is required (--ssid or a positional argument)"}
 		}
 		w := content.WiFi{SSID: ssid, Pass: o.pass, Hidden: o.hidden}
 		if o.auth != "" {
@@ -114,7 +120,7 @@ func buildPayload(o *options, typ string, args []string, stdin []byte) (text str
 			v.FullName = firstArg(args)
 		}
 		if v == (content.VCard{}) {
-			return "", nil, false, errors.New("vcard: provide at least a name or one field (--name, --email, --phone, ...)")
+			return "", nil, false, usageError{"vcard: provide at least a name or one field (--name, --email, --phone, ...)"}
 		}
 		return v.String(), nil, false, nil
 
@@ -145,7 +151,7 @@ func buildPayload(o *options, typ string, args []string, stdin []byte) (text str
 			e.AllDay = e.AllDay || dateOnly
 		}
 		if e.Summary == "" && e.Location == "" && e.Description == "" && e.Start.IsZero() && e.End.IsZero() {
-			return "", nil, false, errors.New("event: provide at least a summary (--summary or a positional argument)")
+			return "", nil, false, usageError{"event: provide at least a summary (--summary or a positional argument)"}
 		}
 		return e.String(), nil, false, nil
 
@@ -186,8 +192,14 @@ func stdinString(stdin []byte) string {
 	return strings.TrimRight(string(stdin), "\r\n")
 }
 
+// usageError marks an invocation that misses required content; the command
+// reports it followed by its own usage instead of a bare error line.
+type usageError struct{ msg string }
+
+func (e usageError) Error() string { return e.msg }
+
 func errNoContent(typ string) error {
-	return fmt.Errorf("no content for %q: pass it as an argument, a flag, or on stdin", typ)
+	return usageError{fmt.Sprintf("no content for %q: pass it as an argument, a flag, or on stdin", typ)}
 }
 
 func parseWiFiAuth(s string) (content.WiFiAuth, error) {

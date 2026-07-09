@@ -14,6 +14,7 @@ import (
 	"github.com/nachop51/qr-go/logo"
 	"github.com/nachop51/qr-go/render"
 	"github.com/nachop51/qr-go/render/png"
+	"github.com/nachop51/qr-go/render/style"
 	"github.com/nachop51/qr-go/render/svg"
 	"github.com/nachop51/qr-go/render/terminal"
 )
@@ -46,10 +47,18 @@ func resolveFormat(flag, output string) (string, error) {
 // buildRenderer constructs the configured renderer for the given format, writing
 // to w.
 func buildRenderer(format string, o *options, w io.Writer) (render.Renderer, error) {
+	st, err := parseStyle(o)
+	if err != nil {
+		return nil, err
+	}
+
 	switch format {
 	case "terminal":
 		if o.logo != "" {
 			return nil, fmt.Errorf("the terminal renderer has no logo support; use -f png or -f svg")
+		}
+		if o.styleConfigured() {
+			return nil, fmt.Errorf("the terminal renderer has no style support; use -f png or -f svg")
 		}
 		t := terminal.New().Writer(w)
 		if o.invert {
@@ -77,6 +86,36 @@ func buildRenderer(format string, o *options, w io.Writer) (render.Renderer, err
 			width, height = o.size, o.size
 		}
 		p := png.New().Writer(w).Dark(dark).White(light).Width(width).Height(height)
+		p = p.ModuleShape(st.module).EyeFrameShape(st.frame).EyeBallShape(st.ball)
+		if o.eyeFrame != "" {
+			c, err := parseHexColor(o.eyeFrame)
+			if err != nil {
+				return nil, fmt.Errorf("--eye-frame: %w", err)
+			}
+			p = p.EyeFrame(c)
+		}
+		if o.eyeBall != "" {
+			c, err := parseHexColor(o.eyeBall)
+			if err != nil {
+				return nil, fmt.Errorf("--eye-ball: %w", err)
+			}
+			p = p.EyeBall(c)
+		}
+		if st.gradKind != style.GradientNone {
+			from, err := parseHexColor(st.gradFrom)
+			if err != nil {
+				return nil, fmt.Errorf("--gradient: %w", err)
+			}
+			to, err := parseHexColor(st.gradTo)
+			if err != nil {
+				return nil, fmt.Errorf("--gradient: %w", err)
+			}
+			if st.gradKind == style.GradientRadial {
+				p = p.GradientRadial(from, to)
+			} else {
+				p = p.GradientLinear(from, to, st.gradAngle)
+			}
+		}
 		if o.quiet >= 0 {
 			p = p.Quiet(o.quiet)
 		}
@@ -91,6 +130,13 @@ func buildRenderer(format string, o *options, w io.Writer) (render.Renderer, err
 
 	case "svg":
 		s := svg.New().Writer(w).Dark(o.dark).Light(o.light).Module(o.scale)
+		s = s.ModuleShape(st.module).EyeFrameShape(st.frame).EyeBallShape(st.ball).
+			EyeFrame(o.eyeFrame).EyeBall(o.eyeBall)
+		if st.gradKind == style.GradientRadial {
+			s = s.GradientRadial(st.gradFrom, st.gradTo)
+		} else if st.gradKind == style.GradientLinear {
+			s = s.GradientLinear(st.gradFrom, st.gradTo, st.gradAngle)
+		}
 		if o.quiet >= 0 {
 			s = s.Quiet(o.quiet)
 		}
@@ -106,6 +152,69 @@ func buildRenderer(format string, o *options, w io.Writer) (render.Renderer, err
 	default:
 		return nil, fmt.Errorf("unknown format %q", format)
 	}
+}
+
+// styleOpts holds the parsed style flags in renderer-neutral form; colors stay
+// raw strings so each renderer converts with its own rules.
+type styleOpts struct {
+	module           style.ModuleShape
+	frame, ball      style.EyeShape
+	gradKind         style.GradientKind
+	gradFrom, gradTo string
+	gradAngle        float64
+}
+
+func parseStyle(o *options) (styleOpts, error) {
+	var s styleOpts
+	var err error
+	if s.module, err = style.ParseModuleShape(o.moduleShape); err != nil {
+		return s, fmt.Errorf("--module-shape: %w", err)
+	}
+	base, err := style.ParseEyeShape(o.eyeShape)
+	if err != nil {
+		return s, fmt.Errorf("--eye-shape: %w", err)
+	}
+	s.frame, s.ball = base, base
+	if o.eyeFrameShape != "" {
+		if s.frame, err = style.ParseEyeShape(o.eyeFrameShape); err != nil {
+			return s, fmt.Errorf("--eye-frame-shape: %w", err)
+		}
+	}
+	if o.eyeBallShape != "" {
+		if s.ball, err = style.ParseEyeShape(o.eyeBallShape); err != nil {
+			return s, fmt.Errorf("--eye-ball-shape: %w", err)
+		}
+	}
+	if o.gradient != "" {
+		if err := parseGradientSpec(o.gradient, &s); err != nil {
+			return s, err
+		}
+	}
+	return s, nil
+}
+
+// parseGradientSpec parses linear:<from>:<to>[:angle] or radial:<from>:<to>.
+func parseGradientSpec(spec string, s *styleOpts) error {
+	parts := strings.Split(spec, ":")
+	usage := fmt.Errorf("--gradient: invalid spec %q (use linear:<from>:<to>[:angle] or radial:<from>:<to>)", spec)
+	if len(parts) < 3 {
+		return usage
+	}
+	kind, err := style.ParseGradientKind(parts[0])
+	if err != nil || kind == style.GradientNone {
+		return usage
+	}
+	s.gradKind, s.gradFrom, s.gradTo = kind, parts[1], parts[2]
+	switch {
+	case len(parts) == 3:
+		return nil
+	case len(parts) == 4 && kind == style.GradientLinear:
+		if s.gradAngle, err = strconv.ParseFloat(parts[3], 64); err != nil {
+			return usage
+		}
+		return nil
+	}
+	return usage
 }
 
 // loadLogo decodes a logo image file (PNG, JPEG, GIF, WebP, or SVG).

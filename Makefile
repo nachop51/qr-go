@@ -38,7 +38,7 @@ web-check: wasm ## Typecheck the web app
 web-build: wasm ## Build the production web bundle into web/dist
 	rm -rf web/dist
 	cd web && bun build index.html --outdir dist --minify
-	cp web/_headers web/robots.txt web/dist/
+	cp web/_headers web/robots.txt web/llms.txt web/dist/
 	@if [ -f web/social-card.png ]; then cp web/social-card.png web/dist/; else echo "warning: web/social-card.png missing (og:image will 404)"; fi
 	@echo "dist: $$(du -sh web/dist | cut -f1)"
 

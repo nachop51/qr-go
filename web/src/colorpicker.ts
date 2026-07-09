@@ -200,19 +200,32 @@ export function createSwatchPicker(opts: SwatchPickerOptions): SwatchPicker {
     },
   };
 
-  // Clicking the owner swatch while its chart is open should close, not
+  // Caret at the hex field's right edge: a second, conspicuous trigger for
+  // the chart; the bare swatch reads as a static preview to first-time users.
+  // Redundant for keyboard/SR (the swatch button is the accessible trigger),
+  // so it's skipped by both.
+  const caret = document.createElement("button");
+  caret.type = "button";
+  caret.className = "swatch-caret";
+  caret.tabIndex = -1;
+  caret.setAttribute("aria-hidden", "true");
+  button.closest(".swatch-combo")?.append(caret);
+
+  // Clicking an owner trigger while its chart is open should close, not
   // reopen: light dismiss already fired on pointerdown, so flag that case.
   let dismissedBySelf = false;
-  button.addEventListener("pointerdown", () => {
-    dismissedBySelf = active === self;
-  });
-  button.addEventListener("click", () => {
-    if (dismissedBySelf) {
-      dismissedBySelf = false;
-      return;
-    }
-    open(self);
-  });
+  for (const trigger of [button, caret]) {
+    trigger.addEventListener("pointerdown", () => {
+      dismissedBySelf = active === self;
+    });
+    trigger.addEventListener("click", () => {
+      if (dismissedBySelf) {
+        dismissedBySelf = false;
+        return;
+      }
+      open(self);
+    });
+  }
 
   return {
     get value() {

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/nachop51/qr-go/render"
+	"github.com/nachop51/qr-go/render/style"
 )
 
 type fakeGrid struct{ n int }
@@ -110,6 +111,85 @@ func TestSVGLogoCapped(t *testing.T) {
 	}
 	if warns != 1 {
 		t.Fatalf("expected 1 cap warning, got %d", warns)
+	}
+}
+
+// Styled output drops crispEdges and paints modules, frames and balls as
+// three separate paths, skipping the eye areas in the module loop.
+func TestSVGStyled(t *testing.T) {
+	var buf bytes.Buffer
+	r := New().Writer(&buf).Quiet(0).Module(1).
+		ModuleShape(style.ModuleRounded).
+		EyeShape(style.EyeCircle).
+		EyeFrame("#1d4ed8").
+		EyeBall("#b91c1c")
+	if err := r.Render(fakeGrid{n: 21}); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+
+	if strings.Contains(out, "crispEdges") {
+		t.Fatal("styled output must not set crispEdges")
+	}
+	if got := strings.Count(out, `<path fill=`); got != 3 {
+		t.Fatalf("expected 3 paint groups, got %d: %s", got, out)
+	}
+	if !strings.Contains(out, `<path fill="#1d4ed8" d="`) || !strings.Contains(out, `<path fill="#b91c1c" d="`) {
+		t.Fatalf("expected eye frame and ball colors, got: %s", out)
+	}
+	// The module path must not touch the eye areas: with quiet 0 and module 1
+	// the top-left eye spans x in [0,7); the checkerboard's (0,0) module is
+	// dark but must be skipped, so no module subpath starts at the origin.
+	dark := out[strings.Index(out, `<path fill="#000000" d="`):]
+	dark = dark[:strings.Index(dark, `"/>`)]
+	if strings.Contains(dark, "M0 0") {
+		t.Fatalf("module path should skip eye modules: %s", dark)
+	}
+}
+
+// Setting only an eye color still routes through the styled branch; the eyes
+// stay square but become their own paths.
+func TestSVGStyledEyeColorOnly(t *testing.T) {
+	var buf bytes.Buffer
+	if err := New().Writer(&buf).EyeFrame("red").Render(fakeGrid{n: 21}); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if got := strings.Count(out, `<path fill=`); got != 3 {
+		t.Fatalf("expected 3 paint groups, got %d: %s", got, out)
+	}
+	if !strings.Contains(out, `<path fill="red" d="`) {
+		t.Fatalf("expected red eye frame path, got: %s", out)
+	}
+}
+
+// A gradient adds a <defs> ramp shared by modules and (uncolored) eyes.
+func TestSVGGradient(t *testing.T) {
+	var buf bytes.Buffer
+	err := New().Writer(&buf).Quiet(0).Module(10).
+		GradientLinear("#0f172a", "#7f1d1d", 90).
+		Render(fakeGrid{n: 21})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, `<linearGradient id="qrgo-gradient" gradientUnits="userSpaceOnUse" x1="105" y1="0" x2="105" y2="210">`) {
+		t.Fatalf("expected vertical linear gradient across the 210px image, got: %s", out)
+	}
+	if !strings.Contains(out, `<stop offset="0" stop-color="#0f172a"/><stop offset="1" stop-color="#7f1d1d"/>`) {
+		t.Fatalf("expected two gradient stops, got: %s", out)
+	}
+	if got := strings.Count(out, `<path fill="url(#qrgo-gradient)"`); got != 3 {
+		t.Fatalf("all 3 paint groups should share the gradient, got %d: %s", got, out)
+	}
+
+	buf.Reset()
+	if err := New().Writer(&buf).GradientRadial("#000", "#333").Render(fakeGrid{n: 21}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `<radialGradient id="qrgo-gradient"`) {
+		t.Fatalf("expected radial gradient, got: %s", buf.String())
 	}
 }
 

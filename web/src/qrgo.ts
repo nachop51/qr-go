@@ -5,6 +5,16 @@ import "./vendor/wasm_exec.js";
 // @ts-expect-error resolved by Bun at build time
 import wasmPath from "../qr.wasm" with { type: "file" };
 
+export type ModuleShape = "square" | "rounded" | "dot";
+export type EyeShape = "square" | "rounded" | "circle";
+
+export interface GradientSpec {
+  kind: "linear" | "radial";
+  from: string;
+  to: string;
+  angle?: number; // degrees, linear only (0 = left to right)
+}
+
 export interface GenerateOptions {
   text: string;
   ecLevel?: "L" | "M" | "Q" | "H";
@@ -19,6 +29,13 @@ export interface GenerateOptions {
   logoModules?: number; // omit or 0 = max the EC level allows
   version?: number; // 1-40; omit = auto
   mask?: number; // 0-7; omit = auto
+  moduleShape?: ModuleShape;
+  eyeShape?: EyeShape; // finder frame + ball at once
+  eyeFrameShape?: EyeShape; // overrides eyeShape for the frame
+  eyeBallShape?: EyeShape; // overrides eyeShape for the ball
+  eyeFrame?: string; // finder frame color; omit = follow dark/gradient
+  eyeBall?: string; // finder ball color; omit = follow dark/gradient
+  gradient?: GradientSpec;
 }
 
 export interface GenerateResult {
