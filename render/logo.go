@@ -19,6 +19,70 @@ type LogoBudgeter interface {
 	MaxLogoModules() int
 }
 
+// logoMasked hides the modules under the centred logo region.
+type logoMasked struct {
+	Grid
+	lo, hi int // region bounds in modules, [lo, hi) on both axes
+}
+
+func (m logoMasked) IsDark(x, y int) bool {
+	if x >= m.lo && x < m.hi && y >= m.lo && y < m.hi {
+		return false
+	}
+	return m.Grid.IsDark(x, y)
+}
+
+// MaskLogo wraps g so the modules inside the centred mods-wide logo region
+// (as returned by [ResolveLogo]) read as light. Renderers draw from the
+// wrapped grid so shaped modules at the region's edge round toward the
+// cleared area instead of connecting to modules the logo overlay is about to
+// hide, and so no module is emitted just to be painted over.
+func MaskLogo(g Grid, mods int) Grid {
+	if mods <= 0 {
+		return g
+	}
+	lo := (g.Size() - mods) / 2
+	return logoMasked{Grid: g, lo: lo, hi: lo + mods}
+}
+
+// DefaultLogoScale is the percentage of the cleared area a logo fills when no
+// explicit scale is configured. Small regions get less breathing room: on a
+// narrow span every ring of background is a big slice of the (already small)
+// logo, while a wide span can afford a proportionally larger margin.
+func DefaultLogoScale(mods int) int {
+	switch {
+	case mods <= 3:
+		return 80
+	case mods <= 7:
+		return 75
+	default:
+		return 70
+	}
+}
+
+// LogoBox returns the edge length of the square the logo image is fitted
+// into, inside a cleared region of region device units (the mods-module logo
+// span times the per-module scale). scalePct is the percentage of the region
+// the logo may fill: 100 covers the whole cleared square, smaller values
+// shrink the logo and leave more background around it. A value <= 0 keeps the
+// span-dependent default, [DefaultLogoScale]. Values above 100 are capped
+// (reported through [Warnf]).
+//
+// Both raster and vector renderers call this so a logo behaves identically
+// across output formats.
+func LogoBox(region, mods, scalePct int) int {
+	if scalePct <= 0 {
+		scalePct = DefaultLogoScale(mods)
+	}
+	if scalePct > 100 {
+		if Warnf != nil {
+			Warnf("logo scale capped to 100%% of the cleared area")
+		}
+		scalePct = 100
+	}
+	return max(region*scalePct/100, 1)
+}
+
 // ResolveLogo returns the effective centred-logo span, in whole modules, for a
 // grid. When configured <= 0 it defaults to the grid's full recoverable budget
 // (see [LogoBudgeter]) — the largest span the error-correction level can

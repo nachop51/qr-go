@@ -26,6 +26,7 @@ type SVG struct {
 	module      int
 	logo        image.Image
 	logoModules int
+	logoScale   int
 	moduleShape style.ModuleShape
 	frameShape  style.EyeShape
 	ballShape   style.EyeShape
@@ -114,6 +115,12 @@ func (s SVG) Logo(img image.Image) SVG { s.logo = img; return s }
 // budget is capped to it so the code stays scannable.
 func (s SVG) LogoModules(n int) SVG { s.logoModules = n; return s }
 
+// LogoScale sets how much of the cleared logo square the image fills, as a
+// percentage of its edge: 100 covers the whole square, smaller values leave
+// more background around the logo. A value <= 0 restores the span-dependent
+// default, [render.DefaultLogoScale]. Values above 100 are capped.
+func (s SVG) LogoScale(pct int) SVG { s.logoScale = pct; return s }
+
 func (s SVG) Render(g render.Grid) error {
 	w := s.w
 	if w == nil {
@@ -140,8 +147,17 @@ func (s SVG) markup(g render.Grid) string {
 	totalModules := g.Size() + 2*quiet
 	size := totalModules * module
 
+	// Resolve the logo span before drawing and hide the modules it will
+	// cover: shaped modules at the region's edge must round toward the
+	// cleared area instead of connecting to modules the overlay erases.
+	logoMods := 0
+	if s.logo != nil {
+		logoMods = render.ResolveLogo(g, s.logoModules)
+		g = render.MaskLogo(g, logoMods)
+	}
+
 	if s.styled() {
-		return s.styledMarkup(g, module, quiet, size)
+		return s.styledMarkup(g, logoMods, module, quiet, size)
 	}
 
 	var sb strings.Builder
@@ -170,10 +186,8 @@ func (s SVG) markup(g render.Grid) string {
 	}
 	sb.WriteString(`"/>`)
 
-	if s.logo != nil {
-		if mods := render.ResolveLogo(g, s.logoModules); mods > 0 {
-			s.drawLogo(&sb, g.Size(), quiet, module, mods)
-		}
+	if logoMods > 0 {
+		s.drawLogo(&sb, g.Size(), quiet, module, logoMods)
 	}
 
 	sb.WriteString(`</svg>`)
@@ -184,7 +198,7 @@ func (s SVG) markup(g render.Grid) string {
 // fast path it omits shape-rendering="crispEdges", which would destroy the
 // anti-aliasing that curves depend on, and draws each of the three finder
 // eyes as one ring path plus one pupil path instead of per-module squares.
-func (s SVG) styledMarkup(g render.Grid, module, quiet, size int) string {
+func (s SVG) styledMarkup(g render.Grid, logoMods, module, quiet, size int) string {
 	s.warnContrast()
 
 	var sb strings.Builder
@@ -235,10 +249,8 @@ func (s SVG) styledMarkup(g render.Grid, module, quiet, size int) string {
 	}
 	sb.WriteString(`"/>`)
 
-	if s.logo != nil {
-		if mods := render.ResolveLogo(g, s.logoModules); mods > 0 {
-			s.drawLogo(&sb, n, quiet, module, mods)
-		}
+	if logoMods > 0 {
+		s.drawLogo(&sb, n, quiet, module, logoMods)
 	}
 
 	sb.WriteString(`</svg>`)
@@ -323,16 +335,10 @@ func (s SVG) drawLogo(sb *strings.Builder, size, quiet, module, mods int) {
 	region := mods * module
 	fmt.Fprintf(sb, `<rect x="%d" y="%d" width="%d" height="%d" fill="%s"/>`, x0, y0, region, region, s.light)
 
-	// Leave a one-module light ring on every side so the logo never touches
-	// the surrounding modules; the browser fits and centres the image within
-	// the box, preserving its aspect ratio.
-	box := region - 2*module
-	if box < module {
-		box = region - module
-	}
-	if box < 1 {
-		box = region
-	}
+	// The browser fits and centres the image within the box (by default a
+	// span-dependent slice of the cleared region, so the logo never touches
+	// the surrounding modules), preserving its aspect ratio.
+	box := render.LogoBox(region, mods, s.logoScale)
 
 	// Embed at 2x the drawn box (for hi-dpi screens), never above the source
 	// resolution. Embedding the source as-is would put a full-resolution data

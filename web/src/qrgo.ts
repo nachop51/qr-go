@@ -27,6 +27,7 @@ export interface GenerateOptions {
   moduleSize?: number;
   logo?: Uint8Array;
   logoModules?: number; // omit or 0 = max the EC level allows
+  logoScale?: number; // % of the logo area the image fills; omit or 0 = default (70-80 by logo span)
   version?: number; // 1-40; omit = auto
   mask?: number; // 0-7; omit = auto
   moduleShape?: ModuleShape;

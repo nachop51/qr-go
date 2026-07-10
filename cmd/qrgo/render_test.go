@@ -162,6 +162,7 @@ func TestParseStyle(t *testing.T) {
 	}
 
 	for _, bad := range []options{
+		{shape: "blob"},
 		{moduleShape: "blob"},
 		{eyeShape: "blob"},
 		{eyeFrameShape: "blob"},
@@ -173,6 +174,37 @@ func TestParseStyle(t *testing.T) {
 		if _, err := parseStyle(&bad); err == nil {
 			t.Errorf("expected error for %+v", bad)
 		}
+	}
+}
+
+func TestParseStyleSharedShape(t *testing.T) {
+	tests := []struct {
+		name   string
+		o      options
+		module style.ModuleShape
+		frame  style.EyeShape
+		ball   style.EyeShape
+	}{
+		{"rounded everywhere", options{shape: "rounded"},
+			style.ModuleRounded, style.EyeRounded, style.EyeRounded},
+		{"circle maps to dot modules", options{shape: "circle"},
+			style.ModuleDot, style.EyeCircle, style.EyeCircle},
+		{"dot is accepted for eyes too", options{shape: "dot"},
+			style.ModuleDot, style.EyeCircle, style.EyeCircle},
+		{"specific flags override", options{shape: "circle", moduleShape: "square", eyeBallShape: "rounded"},
+			style.ModuleSquare, style.EyeCircle, style.EyeRounded},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			st, err := parseStyle(&tt.o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st.module != tt.module || st.frame != tt.frame || st.ball != tt.ball {
+				t.Fatalf("shapes = %v/%v/%v, want %v/%v/%v",
+					st.module, st.frame, st.ball, tt.module, tt.frame, tt.ball)
+			}
+		})
 	}
 }
 

@@ -28,6 +28,7 @@ type PNG struct {
 	quiet       int
 	logo        image.Image
 	logoModules int
+	logoScale   int
 	moduleShape style.ModuleShape
 	frameShape  style.EyeShape
 	ballShape   style.EyeShape
@@ -64,6 +65,15 @@ func (p PNG) Logo(img image.Image) PNG {
 // budget is capped to it so the code stays scannable.
 func (p PNG) LogoModules(n int) PNG {
 	p.logoModules = n
+	return p
+}
+
+// LogoScale sets how much of the cleared logo square the image fills, as a
+// percentage of its edge: 100 covers the whole square, smaller values leave
+// more background around the logo. A value <= 0 restores the span-dependent
+// default, [render.DefaultLogoScale]. Values above 100 are capped.
+func (p PNG) LogoScale(pct int) PNG {
+	p.logoScale = pct
 	return p
 }
 
@@ -176,22 +186,30 @@ func (p PNG) buildImage(g render.Grid) *image.RGBA {
 	offX := (w - content) / 2
 	offY := (h - content) / 2
 
+	// Resolve the logo span before drawing and hide the modules it will
+	// cover: shaped modules at the region's edge must round toward the
+	// cleared area instead of connecting to modules the overlay erases.
+	logoMods := 0
+	grid := g
+	if p.logo != nil {
+		logoMods = render.ResolveLogo(g, p.logoModules)
+		grid = render.MaskLogo(g, logoMods)
+	}
+
 	if p.styled() {
-		p.drawStyled(img, g, offX, offY, scale)
+		p.drawStyled(img, grid, offX, offY, scale)
 	} else {
 		for y := range size {
 			for x := range size {
-				if g.IsDark(x, y) {
+				if grid.IsDark(x, y) {
 					p.drawModule(img, offX+(x+p.quiet)*scale, offY+(y+p.quiet)*scale, scale)
 				}
 			}
 		}
 	}
 
-	if p.logo != nil {
-		if mods := render.ResolveLogo(g, p.logoModules); mods > 0 {
-			p.drawLogo(img, offX, offY, size, scale, mods)
-		}
+	if logoMods > 0 {
+		p.drawLogo(img, offX, offY, size, scale, logoMods)
 	}
 
 	return img
@@ -334,16 +352,10 @@ func (p PNG) drawLogo(img *image.RGBA, offX, offY, size, scale, mods int) {
 	draw.Draw(img, image.Rect(x0, y0, x0+region, y0+region),
 		&image.Uniform{C: p.white}, image.Point{}, draw.Src)
 
-	// Fit the logo inside the region, leaving a one-module white ring on every
-	// side so it never touches the surrounding modules, preserving the aspect
-	// ratio, centred on the region.
-	box := region - 2*scale
-	if box < scale {
-		box = region - scale
-	}
-	if box < 1 {
-		box = region
-	}
+	// Fit the logo inside its box (by default a span-dependent slice of the
+	// cleared region, so the logo never touches the surrounding modules),
+	// preserving the aspect ratio, centred on the region.
+	box := render.LogoBox(region, mods, p.logoScale)
 	sb := p.logo.Bounds()
 	sw, sh := sb.Dx(), sb.Dy()
 	tw, th := box, box

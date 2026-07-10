@@ -20,6 +20,7 @@
 //	  moduleSize:  int,                             // svg px per module
 //	  logo:        Uint8Array,                      // png or jpeg bytes
 //	  logoModules: int,                             // logo span in modules; omit or 0 = max the EC level allows
+//	  logoScale:   int,                             // % of the logo area the image fills; omit or 0 = default (70-80 by logo span)
 //	  version:     int,                             // 1-40; omit or 0 = auto (errors if the data doesn't fit)
 //	  mask:        int,                             // 0-7; omit or -1 = auto (best-scoring pattern)
 //	  moduleShape: "square" | "rounded" | "dot",    // default "square"
@@ -244,7 +245,7 @@ func generate(opts js.Value) any {
 			r = r.Width(n).Height(n)
 		}
 		if logo != nil {
-			r = r.Logo(logo).LogoModules(num(opts, "logoModules", 0))
+			r = r.Logo(logo).LogoModules(num(opts, "logoModules", 0)).LogoScale(num(opts, "logoScale", 0))
 		}
 		r = r.ModuleShape(st.module).EyeFrameShape(st.frame).EyeBallShape(st.ball)
 		if st.eyeFrame != "" {
@@ -292,7 +293,7 @@ func generate(opts js.Value) any {
 			r = r.Module(n)
 		}
 		if logo != nil {
-			r = r.Logo(logo).LogoModules(num(opts, "logoModules", 0))
+			r = r.Logo(logo).LogoModules(num(opts, "logoModules", 0)).LogoScale(num(opts, "logoScale", 0))
 		}
 		r = r.ModuleShape(st.module).EyeFrameShape(st.frame).EyeBallShape(st.ball).
 			EyeFrame(st.eyeFrame).EyeBall(st.eyeBall)

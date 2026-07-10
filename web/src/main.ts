@@ -63,6 +63,7 @@ interface State {
   pngSize: number;
   logo: Uint8Array | null;
   logoModules: number; // 0 = max the EC level allows
+  logoScale: number; // % of the logo area the image fills
   moduleShape: ModuleShape;
   eyeFrameShape: EyeShape;
   eyeBallShape: EyeShape;
@@ -87,6 +88,7 @@ const state: State = {
   pngSize: 1280,
   logo: null,
   logoModules: 0,
+  logoScale: 80,
   moduleShape: "square",
   eyeFrameShape: "square",
   eyeBallShape: "square",
@@ -124,6 +126,9 @@ const logoExtrasEl = $("#logo-extras");
 const logoSpanRowEl = $("#logo-span-row");
 const logoModulesEl = $<HTMLInputElement>("#logo-modules");
 const logoModulesOut = $("#logo-modules-out");
+const logoScaleRowEl = $("#logo-scale-row");
+const logoScaleEl = $<HTMLInputElement>("#logo-scale");
+const logoScaleOut = $("#logo-scale-out");
 
 // setEcLevel updates the level everywhere it shows: state, the radio group,
 // and the hint. Used by the radios themselves and by the logo picker, which
@@ -135,6 +140,43 @@ function setEcLevel(level: State["ecLevel"]): void {
   );
   if (radio) radio.checked = true;
   $("#ec-hint").textContent = EC_HINTS[level];
+}
+
+// The "QR shape" select is a shortcut over the three shape selects in More
+// style, not state of its own: picking a preset writes through to all three,
+// and the select itself only reflects whether the current combination still
+// matches one. When it doesn't, it shows a display-only "Custom" option.
+const QR_SHAPE_PRESETS: Record<
+  string,
+  { module: ModuleShape; frame: EyeShape; ball: EyeShape }
+> = {
+  square: { module: "square", frame: "square", ball: "square" },
+  rounded: { module: "rounded", frame: "rounded", ball: "rounded" },
+  circle: { module: "dot", frame: "circle", ball: "circle" },
+};
+
+function syncQrShapePreset(): void {
+  const sel = $<HTMLSelectElement>("#qr-shape");
+  const match = Object.entries(QR_SHAPE_PRESETS).find(
+    ([, p]) =>
+      p.module === state.moduleShape &&
+      p.frame === state.eyeFrameShape &&
+      p.ball === state.eyeBallShape,
+  );
+  const custom = sel.querySelector<HTMLOptionElement>('option[value="custom"]');
+  if (match) {
+    custom?.remove();
+    sel.value = match[0];
+  } else {
+    if (!custom) {
+      const o = document.createElement("option");
+      o.value = "custom";
+      o.textContent = "Custom";
+      o.disabled = true; // shown as the current value, never user-pickable
+      sel.append(o);
+    }
+    sel.value = "custom";
+  }
 }
 
 // The slider's right end means "max the EC level allows" (sent as 0 so the
@@ -287,7 +329,9 @@ function options(format: "png" | "svg"): GenerateOptions {
     light: state.light,
     quiet: state.quiet,
     ...(format === "png" ? { size: state.pngSize } : {}),
-    ...(state.logo ? { logo: state.logo, logoModules: state.logoModules } : {}),
+    ...(state.logo
+      ? { logo: state.logo, logoModules: state.logoModules, logoScale: state.logoScale }
+      : {}),
     ...(state.version > 0 ? { version: state.version } : {}),
     ...(state.mask >= 0 ? { mask: state.mask } : {}),
     ...(state.moduleShape !== "square" ? { moduleShape: state.moduleShape } : {}),
@@ -324,8 +368,22 @@ function showEmpty(message: string, isProblem = false): void {
 }
 
 function setDownloadsEnabled(on: boolean): void {
-  for (const id of ["#dl-png", "#dl-svg", "#cp-png", "#cp-svg"])
-    ($(id) as HTMLButtonElement).disabled = !on;
+  for (const id of ["#download", "#copy"]) ($(id) as HTMLButtonElement).disabled = !on;
+}
+
+// The format switch scopes both action verbs; the buttons stay put, only
+// their accessible names follow the selection.
+function exportFormat(): "png" | "svg" {
+  return document.querySelector<HTMLInputElement>("#dl-format input:checked")?.value === "svg"
+    ? "svg"
+    : "png";
+}
+
+function syncExportLabels(): void {
+  const fmt = exportFormat();
+  $("#download").setAttribute("aria-label", fmt === "png" ? "Download PNG" : "Download SVG");
+  // SVG lands as markup text: image/svg+xml is not paste-able in most apps.
+  $("#copy").setAttribute("aria-label", fmt === "png" ? "Copy PNG image" : "Copy SVG markup");
 }
 
 // Discrete controls (radios, selects, sliders) coalesce on a short delay;
@@ -337,7 +395,12 @@ function regenerate(delay = 120): void {
   timer = setTimeout(render, delay);
 }
 
+// Controls are live before the wasm module finishes loading; renders that
+// arrive early are dropped and the post-init render picks up the latest state.
+let wasmReady = false;
+
 function render(): void {
+  if (!wasmReady) return showEmpty("Warming up the printer…");
   const type = CONTENT_TYPES.find((t) => t.id === state.type)!;
   const payload = type.payload(state.values[state.type]);
 
@@ -368,8 +431,10 @@ function render(): void {
 
   // The budget moves with the code's size and EC level; keep the thumb pinned
   // to the right end while the span is "max", and re-derive an explicit span
-  // (the browser clamps the value when the new max is smaller).
-  logoModulesEl.max = String(result.maxLogoModules);
+  // (the browser clamps the value when the new max is smaller). Only odd
+  // spans centre on the module grid, so with the slider stepping 1,3,5… the
+  // max itself must be odd or the "max" stop becomes unreachable.
+  logoModulesEl.max = String(result.maxLogoModules - ((result.maxLogoModules + 1) % 2));
   if (state.logoModules === 0) logoModulesEl.value = logoModulesEl.max;
   readLogoSpan();
   setDownloadsEnabled(true);
@@ -473,6 +538,7 @@ function syncFromDom(): void {
   state.moduleShape = $<HTMLSelectElement>("#module-shape").value as State["moduleShape"];
   state.eyeFrameShape = $<HTMLSelectElement>("#eye-frame-shape").value as State["eyeFrameShape"];
   state.eyeBallShape = $<HTMLSelectElement>("#eye-ball-shape").value as State["eyeBallShape"];
+  syncQrShapePreset(); // the QR shape select is derived from the three above
   state.gradientKind = $<HTMLSelectElement>("#gradient-kind").value as State["gradientKind"];
 
   // Eye colors: an empty hex field means "follow the module color".
@@ -497,6 +563,9 @@ function syncFromDom(): void {
   syncGradientRows();
 
   readLogoSpan();
+  state.logoScale = Number(logoScaleEl.value);
+  logoScaleOut.textContent = logoScaleEl.value;
+  syncExportLabels();
 }
 
 // The gradient color/angle rows only make sense while a gradient is active.
@@ -615,19 +684,37 @@ function wireStyleControls(): void {
   wireColor("grad-from", "Gradient start", () => state.gradientFrom, (v) => (state.gradientFrom = v));
   wireColor("grad-to", "Gradient end", () => state.gradientTo, (v) => (state.gradientTo = v));
 
+  const qrShapeSel = $<HTMLSelectElement>("#qr-shape");
   const moduleShapeSel = $<HTMLSelectElement>("#module-shape");
+  const frameShapeSel = $<HTMLSelectElement>("#eye-frame-shape");
+  const ballShapeSel = $<HTMLSelectElement>("#eye-ball-shape");
+
+  qrShapeSel.addEventListener("change", () => {
+    const p = QR_SHAPE_PRESETS[qrShapeSel.value];
+    if (!p) return;
+    state.moduleShape = p.module;
+    state.eyeFrameShape = p.frame;
+    state.eyeBallShape = p.ball;
+    moduleShapeSel.value = p.module;
+    frameShapeSel.value = p.frame;
+    ballShapeSel.value = p.ball;
+    syncQrShapePreset(); // drops the stale Custom option
+    regenerate();
+  });
+
   moduleShapeSel.addEventListener("change", () => {
     state.moduleShape = moduleShapeSel.value as State["moduleShape"];
+    syncQrShapePreset();
     regenerate();
   });
-  const frameShapeSel = $<HTMLSelectElement>("#eye-frame-shape");
   frameShapeSel.addEventListener("change", () => {
     state.eyeFrameShape = frameShapeSel.value as State["eyeFrameShape"];
+    syncQrShapePreset();
     regenerate();
   });
-  const ballShapeSel = $<HTMLSelectElement>("#eye-ball-shape");
   ballShapeSel.addEventListener("change", () => {
     state.eyeBallShape = ballShapeSel.value as State["eyeBallShape"];
+    syncQrShapePreset();
     regenerate();
   });
 
@@ -668,6 +755,7 @@ function wireStyleControls(): void {
     logoName.textContent = file.name;
     logoExtrasEl.classList.remove("hidden");
     logoSpanRowEl.classList.remove("hidden");
+    logoScaleRowEl.classList.remove("hidden");
     regenerate();
   });
 
@@ -676,15 +764,25 @@ function wireStyleControls(): void {
     regenerate();
   });
 
+  logoScaleEl.addEventListener("input", () => {
+    state.logoScale = Number(logoScaleEl.value);
+    logoScaleOut.textContent = logoScaleEl.value;
+    regenerate();
+  });
+
   $("#logo-clear").addEventListener("click", () => {
     state.logo = null;
     state.logoModules = 0;
+    state.logoScale = 80;
     logoInput.value = "";
     logoName.textContent = "none";
     logoModulesEl.value = logoModulesEl.max;
     logoModulesOut.textContent = "max";
+    logoScaleEl.value = "80";
+    logoScaleOut.textContent = "80";
     logoExtrasEl.classList.add("hidden");
     logoSpanRowEl.classList.add("hidden");
+    logoScaleRowEl.classList.add("hidden");
     regenerate();
   });
 
@@ -698,40 +796,33 @@ function wireStyleControls(): void {
     return new Blob([result.data as Uint8Array<ArrayBuffer>], { type: "image/png" });
   };
 
-  const dlPng = $<HTMLButtonElement>("#dl-png");
-  dlPng.addEventListener("click", () => {
-    const blob = pngBlob();
+  const dlBtn = $<HTMLButtonElement>("#download");
+  const cpBtn = $<HTMLButtonElement>("#copy");
+  for (const radio of document.querySelectorAll<HTMLInputElement>("#dl-format input")) {
+    radio.addEventListener("change", syncExportLabels);
+  }
+
+  dlBtn.addEventListener("click", () => {
+    const blob =
+      exportFormat() === "png"
+        ? pngBlob()
+        : lastResult && new Blob([lastResult.data as string], { type: "image/svg+xml" });
     if (!blob) return;
-    download(blob, `${slug()}.png`);
-    receipt(dlPng, "Saved");
+    download(blob, `${slug()}.${exportFormat()}`);
+    receipt(dlBtn, "Saved");
   });
 
-  const dlSvg = $<HTMLButtonElement>("#dl-svg");
-  dlSvg.addEventListener("click", () => {
-    if (!lastResult) return;
-    download(new Blob([lastResult.data as string], { type: "image/svg+xml" }), `${slug()}.svg`);
-    receipt(dlSvg, "Saved");
-  });
-
-  const cpPng = $<HTMLButtonElement>("#cp-png");
-  cpPng.addEventListener("click", async () => {
-    const blob = pngBlob();
-    if (!blob) return;
+  cpBtn.addEventListener("click", async () => {
     try {
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      receipt(cpPng, "Copied");
-    } catch {
-      warningsEl.textContent = "Clipboard blocked by the browser; download instead";
-    }
-  });
-
-  // SVG lands as markup text: image/svg+xml is not paste-able in most apps.
-  const cpSvg = $<HTMLButtonElement>("#cp-svg");
-  cpSvg.addEventListener("click", async () => {
-    if (!lastResult) return;
-    try {
-      await navigator.clipboard.writeText(lastResult.data as string);
-      receipt(cpSvg, "Copied");
+      if (exportFormat() === "png") {
+        const blob = pngBlob();
+        if (!blob) return;
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      } else {
+        if (!lastResult) return;
+        await navigator.clipboard.writeText(lastResult.data as string);
+      }
+      receipt(cpBtn, "Copied");
     } catch {
       warningsEl.textContent = "Clipboard blocked by the browser; download instead";
     }
@@ -799,6 +890,12 @@ window.addEventListener("pageshow", (e) => {
   if (document.body.classList.contains("ready")) render();
 });
 
-await initQrgo();
+try {
+  await initQrgo();
+} catch {
+  showEmpty("The print engine failed to load. Refresh to try again.", true);
+  throw new Error("qrgo wasm failed to load");
+}
+wasmReady = true;
 document.body.classList.add("ready");
 render();

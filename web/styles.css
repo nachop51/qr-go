@@ -47,7 +47,6 @@ summary,
 .file-btn,
 .link-btn,
 .segmented span,
-.fmt,
 .empty,
 .file-name,
 .hint,
@@ -1089,24 +1088,25 @@ input[type="range"]:active::-moz-range-thumb {
 
 /* --- actions --- */
 
+/* One row that reads left to right: pick the format, then act on it. */
 .actions {
   display: grid;
+  grid-template-columns: auto 1fr 1fr;
   gap: 10px;
+  align-items: stretch;
 }
 
-.action-row {
+/* Each format is one fixed cell; a new format adds a cell, not a button row. */
+.actions .segmented {
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: 56px;
+}
+
+.actions .segmented span {
+  height: 100%;
   display: grid;
-  grid-template-columns: 42px 1fr 1fr;
-  gap: 10px;
-  align-items: center;
-}
-
-.fmt {
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: var(--ink);
+  place-content: center;
 }
 
 .btn {

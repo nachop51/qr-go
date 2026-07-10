@@ -52,10 +52,12 @@ type options struct {
 	block       bool
 	logo        string
 	logoModules int
+	logoScale   int
 	noECI       bool
 	info        bool
 
 	// Styling (PNG/SVG only)
+	shape         string
 	moduleShape   string
 	eyeShape      string
 	eyeFrameShape string
@@ -68,7 +70,8 @@ type options struct {
 // styleConfigured reports whether any style flag departs from the default
 // square look; the terminal renderer rejects these.
 func (o *options) styleConfigured() bool {
-	return (o.moduleShape != "" && o.moduleShape != "square") ||
+	return (o.shape != "" && o.shape != "square") ||
+		(o.moduleShape != "" && o.moduleShape != "square") ||
 		o.eyeShape != "" || o.eyeFrameShape != "" || o.eyeBallShape != "" ||
 		o.eyeFrame != "" || o.eyeBall != "" || o.gradient != ""
 }
@@ -160,7 +163,7 @@ func newRootCmd() *cobra.Command {
 
 	f.StringVarP(&o.output, "output", "o", "", "output file (format inferred from its extension)")
 	f.StringVarP(&o.format, "format", "f", "", "output format: terminal, png, or svg")
-	f.StringVarP(&o.ecc, "ecc", "e", "M", "error-correction level: L, M, Q, or H")
+	f.StringVarP(&o.ecc, "ecc", "e", "M", "error-correction level: L, M, Q, or H (H when --logo is set)")
 	f.IntVarP(&o.quiet, "quiet", "q", -1, "quiet-zone width in modules (default: per-renderer)")
 	f.StringVar(&o.dark, "dark", "#000000", "foreground color for PNG/SVG (hex for PNG; any CSS color for SVG)")
 	f.StringVar(&o.light, "light", "#ffffff", "background color for PNG/SVG")
@@ -170,9 +173,11 @@ func newRootCmd() *cobra.Command {
 	f.IntVar(&o.scale, "scale", 10, "SVG module size in px")
 	f.BoolVar(&o.invert, "invert", false, "terminal: swap dark/light (for dark backgrounds)")
 	f.BoolVar(&o.block, "block", false, "terminal: classic full-block style")
-	f.StringVar(&o.logo, "logo", "", "overlay a logo image (PNG/JPEG/GIF/WebP/SVG) on PNG/SVG output")
+	f.StringVarP(&o.logo, "logo", "l", "", "overlay a logo image (PNG/JPEG/GIF/WebP/SVG) on PNG/SVG output")
 	f.IntVar(&o.logoModules, "logo-modules", 0, "logo span in modules (0 = max the EC level allows)")
-	f.StringVar(&o.moduleShape, "module-shape", "square", "PNG/SVG module shape: square, rounded, or dot")
+	f.IntVar(&o.logoScale, "logo-scale", 0, "percent of the logo area the image fills, up to 100 (default 70-80 by logo span)")
+	f.StringVarP(&o.shape, "shape", "s", "", "PNG/SVG shape for modules and eyes: square, rounded, or circle (specific shape flags override)")
+	f.StringVar(&o.moduleShape, "module-shape", "", "PNG/SVG module shape: square, rounded, or dot (default square)")
 	f.StringVar(&o.eyeShape, "eye-shape", "", "PNG/SVG finder eye shape (frame and ball): square, rounded, or circle")
 	f.StringVar(&o.eyeFrameShape, "eye-frame-shape", "", "finder frame shape (overrides --eye-shape)")
 	f.StringVar(&o.eyeBallShape, "eye-ball-shape", "", "finder ball shape (overrides --eye-shape)")
@@ -271,6 +276,12 @@ func (o *options) encode(cmd *cobra.Command, typ string, args []string, stdin []
 	level, err := parseECC(o.ecc)
 	if err != nil {
 		return err
+	}
+	// A logo covers modules, so unless the user picked a level themselves,
+	// raise the default to the highest error correction. That also maximizes
+	// the module budget a logo may clear (--logo-modules 0 spans it fully).
+	if o.logo != "" && !cmd.Flags().Changed("ecc") {
+		level = qr.CorrectionLevelHigh
 	}
 	b.SetErrorCorrectionLevel(level)
 	if o.noECI {

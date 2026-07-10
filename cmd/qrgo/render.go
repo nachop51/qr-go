@@ -124,7 +124,7 @@ func buildRenderer(format string, o *options, w io.Writer) (render.Renderer, err
 			if err != nil {
 				return nil, err
 			}
-			p = p.Logo(img).LogoModules(o.logoModules)
+			p = p.Logo(img).LogoModules(o.logoModules).LogoScale(o.logoScale)
 		}
 		return p, nil
 
@@ -145,7 +145,7 @@ func buildRenderer(format string, o *options, w io.Writer) (render.Renderer, err
 			if err != nil {
 				return nil, err
 			}
-			s = s.Logo(img).LogoModules(o.logoModules)
+			s = s.Logo(img).LogoModules(o.logoModules).LogoScale(o.logoScale)
 		}
 		return s, nil
 
@@ -166,11 +166,28 @@ type styleOpts struct {
 
 func parseStyle(o *options) (styleOpts, error) {
 	var s styleOpts
+
+	// --shape is a shared default for modules and eyes; the specific flags
+	// override it.
+	moduleShape, eyeShape := o.moduleShape, o.eyeShape
+	if o.shape != "" {
+		m, e, err := splitSharedShape(o.shape)
+		if err != nil {
+			return s, err
+		}
+		if moduleShape == "" {
+			moduleShape = m
+		}
+		if eyeShape == "" {
+			eyeShape = e
+		}
+	}
+
 	var err error
-	if s.module, err = style.ParseModuleShape(o.moduleShape); err != nil {
+	if s.module, err = style.ParseModuleShape(moduleShape); err != nil {
 		return s, fmt.Errorf("--module-shape: %w", err)
 	}
-	base, err := style.ParseEyeShape(o.eyeShape)
+	base, err := style.ParseEyeShape(eyeShape)
 	if err != nil {
 		return s, fmt.Errorf("--eye-shape: %w", err)
 	}
@@ -191,6 +208,19 @@ func parseStyle(o *options) (styleOpts, error) {
 		}
 	}
 	return s, nil
+}
+
+// splitSharedShape maps a --shape value to its module and eye spellings: the
+// round shape is called "dot" on modules and "circle" on eyes, and --shape
+// accepts either name.
+func splitSharedShape(shape string) (module, eye string, err error) {
+	switch shape {
+	case "square", "rounded":
+		return shape, shape, nil
+	case "circle", "dot":
+		return "dot", "circle", nil
+	}
+	return "", "", fmt.Errorf("--shape: unknown shape %q (want square, rounded, or circle)", shape)
 }
 
 // parseGradientSpec parses linear:<from>:<to>[:angle] or radial:<from>:<to>.

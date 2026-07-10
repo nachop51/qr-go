@@ -27,6 +27,15 @@ func (b budgetGrid) Size() int            { return b.n }
 func (b budgetGrid) IsDark(x, y int) bool { return true }
 func (b budgetGrid) MaxLogoModules() int  { return b.budget }
 
+// sparseGrid is dark only at the listed modules.
+type sparseGrid struct {
+	n    int
+	dark map[[2]int]bool
+}
+
+func (s sparseGrid) Size() int            { return s.n }
+func (s sparseGrid) IsDark(x, y int) bool { return s.dark[[2]int{x, y}] }
+
 func solidLogo(n int) image.Image {
 	l := image.NewRGBA(image.Rect(0, 0, n, n))
 	draw.Draw(l, l.Bounds(), &image.Uniform{C: color.RGBA{200, 30, 30, 255}}, image.Point{}, draw.Src)
@@ -87,9 +96,9 @@ func TestSVGLogo(t *testing.T) {
 	if !strings.Contains(out, `<rect x="140" y="140" width="50" height="50" fill="#ffffff"/>`) {
 		t.Fatalf("expected module-aligned cleared region, got: %s", out)
 	}
-	// Logo box leaves a one-module ring on every side: (150,150), 30x30,
-	// embedded as a data URI.
-	if !strings.Contains(out, `<image x="150" y="150" width="30" height="30" preserveAspectRatio="xMidYMid meet" href="data:image/png;base64,`) {
+	// Logo box defaults to 75% of the 5-module region, centred: (146,146),
+	// 37x37, embedded as a data URI.
+	if !strings.Contains(out, `<image x="146" y="146" width="37" height="37" preserveAspectRatio="xMidYMid meet" href="data:image/png;base64,`) {
 		t.Fatalf("expected embedded logo image, got: %s", out)
 	}
 }
@@ -111,6 +120,26 @@ func TestSVGLogoCapped(t *testing.T) {
 	}
 	if warns != 1 {
 		t.Fatalf("expected 1 cap warning, got %d", warns)
+	}
+}
+
+// A module touching the cleared logo region must render as if its hidden
+// neighbour inside the region were never dark: a boundary pair collapses to
+// one free-standing module, so a rounded shape rounds toward the logo.
+func TestSVGLogoMasksHiddenNeighbours(t *testing.T) {
+	markup := func(dark map[[2]int]bool) string {
+		var buf bytes.Buffer
+		r := New().Writer(&buf).ModuleShape(style.ModuleRounded).Logo(solidLogo(8)).LogoModules(7)
+		if err := r.Render(sparseGrid{n: 21, dark: dark}); err != nil {
+			t.Fatal(err)
+		}
+		return buf.String()
+	}
+	// n=21, span 7 -> region [7,14): (6,10) sits just outside, (7,10) inside.
+	pair := markup(map[[2]int]bool{{6, 10}: true, {7, 10}: true})
+	single := markup(map[[2]int]bool{{6, 10}: true})
+	if pair != single {
+		t.Errorf("boundary pair must draw like the lone outside module\npair:   %s\nsingle: %s", pair, single)
 	}
 }
 

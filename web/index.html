@@ -167,11 +167,13 @@
           </div>
 
           <div class="field-row" style="--i: 1">
-            <label for="module-shape">Module shape</label>
-            <select id="module-shape">
+            <label for="qr-shape">
+              QR shape <span class="hint-inline">modules and eyes at once</span>
+            </label>
+            <select id="qr-shape">
               <option value="square" selected>Square</option>
               <option value="rounded">Rounded</option>
-              <option value="dot">Dots</option>
+              <option value="circle">Circle</option>
             </select>
           </div>
 
@@ -196,10 +198,45 @@
             </div>
           </div>
 
+          <div class="field-row" style="--i: 3">
+            <label for="png-size">
+              PNG export size <output id="png-size-out">1280</output> px
+            </label>
+            <input type="range" id="png-size" min="256" max="2048" step="64" value="1280" />
+          </div>
+
           <details class="advanced" id="more-style">
-            <summary>
-              More style <span class="hint-inline">gradient, eyes, margin, export size</span>
-            </summary>
+            <!-- Kept on one line: a newline before the text collapses to a space
+                 after the ::marker arrow and misaligns it with Advanced below. -->
+            <summary>More style <span class="hint-inline">shapes, gradient, eyes, margin</span></summary>
+            <div class="field-row">
+              <label for="module-shape">Module shape</label>
+              <select id="module-shape">
+                <option value="square" selected>Square</option>
+                <option value="rounded">Rounded</option>
+                <option value="dot">Dots</option>
+              </select>
+            </div>
+
+            <div class="field-row two">
+              <div class="adv-field">
+                <label for="eye-frame-shape">Eye frame</label>
+                <select id="eye-frame-shape">
+                  <option value="square" selected>Square</option>
+                  <option value="rounded">Rounded</option>
+                  <option value="circle">Circle</option>
+                </select>
+              </div>
+              <div class="adv-field">
+                <label for="eye-ball-shape">Eye ball</label>
+                <select id="eye-ball-shape">
+                  <option value="square" selected>Square</option>
+                  <option value="rounded">Rounded</option>
+                  <option value="circle">Circle</option>
+                </select>
+              </div>
+            </div>
+
             <div class="field-row">
               <label for="gradient-kind">Gradient</label>
               <select id="gradient-kind">
@@ -262,25 +299,6 @@
             </div>
 
             <div class="field-row two">
-              <div class="adv-field">
-                <label for="eye-frame-shape">Eye frame</label>
-                <select id="eye-frame-shape">
-                  <option value="square" selected>Square</option>
-                  <option value="rounded">Rounded</option>
-                  <option value="circle">Circle</option>
-                </select>
-              </div>
-              <div class="adv-field">
-                <label for="eye-ball-shape">Eye ball</label>
-                <select id="eye-ball-shape">
-                  <option value="square" selected>Square</option>
-                  <option value="rounded">Rounded</option>
-                  <option value="circle">Circle</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="field-row two">
               <div class="swatch-field">
                 <label for="eye-frame-hex">Eye frame color</label>
                 <div class="swatch-combo">
@@ -332,13 +350,6 @@
                 Margin (quiet zone) <output id="quiet-out">2</output> modules
               </label>
               <input type="range" id="quiet" min="0" max="8" value="2" />
-            </div>
-
-            <div class="field-row">
-              <label for="png-size">
-                PNG export size <output id="png-size-out">1280</output> px
-              </label>
-              <input type="range" id="png-size" min="256" max="2048" step="64" value="1280" />
             </div>
           </details>
 
@@ -394,7 +405,14 @@
               <label for="logo-modules">
                 Logo span <output id="logo-modules-out">max</output>
               </label>
-              <input type="range" id="logo-modules" min="1" max="9" value="9" />
+              <!-- Odd spans only: an even span can't centre on the (odd) module grid. -->
+              <input type="range" id="logo-modules" min="1" max="9" step="2" value="9" />
+            </div>
+            <div class="field-row hidden" id="logo-scale-row">
+              <label for="logo-scale">
+                Logo scale <output id="logo-scale-out">80</output>%
+              </label>
+              <input type="range" id="logo-scale" min="20" max="100" step="5" value="80" />
             </div>
           </details>
         </div>
@@ -410,22 +428,17 @@
         </div>
         <p class="spec" id="spec" aria-live="polite"></p>
         <p class="warnings" id="warnings" role="status"></p>
-        <!-- One row per output format; a terminal/text format will join these. -->
+        <!-- Format is a choice, download/copy are the verbs: a new format adds
+             one segment to the switch, never another button row. -->
         <div class="actions">
-          <div class="action-row">
-            <span class="fmt">PNG</span>
-            <button type="button" class="btn primary" id="dl-png" aria-label="Download PNG">
-              Download
-            </button>
-            <button type="button" class="btn" id="cp-png" aria-label="Copy PNG image">Copy</button>
+          <div class="segmented" id="dl-format" role="radiogroup" aria-label="Export format">
+            <label><input type="radio" name="dlFormat" value="png" checked /><span>PNG</span></label>
+            <label><input type="radio" name="dlFormat" value="svg" /><span>SVG</span></label>
           </div>
-          <div class="action-row">
-            <span class="fmt">SVG</span>
-            <button type="button" class="btn" id="dl-svg" aria-label="Download SVG">
-              Download
-            </button>
-            <button type="button" class="btn" id="cp-svg" aria-label="Copy SVG markup">Copy</button>
-          </div>
+          <button type="button" class="btn primary" id="download" aria-label="Download PNG">
+            Download
+          </button>
+          <button type="button" class="btn" id="copy" aria-label="Copy PNG image">Copy</button>
         </div>
         <details class="payload">
           <summary>Raw payload</summary>
