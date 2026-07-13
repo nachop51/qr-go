@@ -50,14 +50,12 @@ func TestLogoCappedToBudget(t *testing.T) {
 	draw.Draw(logo, logo.Bounds(), &image.Uniform{C: color.RGBA{200, 30, 30, 255}}, image.Point{}, draw.Src)
 
 	var warns int
-	orig := render.Warnf
-	render.Warnf = func(string, ...any) { warns++ }
-	defer func() { render.Warnf = orig }()
+	warn := func(string, ...any) { warns++ }
 
 	scale, _, _ := geom(800, 800, 4, 25)
 	render := func(span int) image.Image {
 		var buf bytes.Buffer
-		if err := New().Writer(&buf).Logo(logo).LogoModules(span).Render(budgetGrid{n: 25, budget: 5}); err != nil {
+		if err := New().Writer(&buf).WarningHandler(warn).Logo(logo).LogoModules(span).Render(budgetGrid{n: 25, budget: 5}); err != nil {
 			t.Fatal(err)
 		}
 		img, err := png.Decode(&buf)

@@ -5,10 +5,11 @@ import (
 	"os"
 )
 
-// Warnf reports non-fatal rendering adjustments, such as a logo span being
-// capped to keep the code scannable. It defaults to writing to stderr; set it
-// to nil to silence it, or replace it to route the messages elsewhere.
-var Warnf = func(format string, args ...any) {
+// WarningHandler receives non-fatal rendering recommendations.
+type WarningHandler func(format string, args ...any)
+
+// StderrWarningHandler is the default used by command-line renderers.
+func StderrWarningHandler(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "qr: "+format+"\n", args...)
 }
 
@@ -71,12 +72,16 @@ func DefaultLogoScale(mods int) int {
 // Both raster and vector renderers call this so a logo behaves identically
 // across output formats.
 func LogoBox(region, mods, scalePct int) int {
+	return LogoBoxWithWarnings(region, mods, scalePct, nil)
+}
+
+func LogoBoxWithWarnings(region, mods, scalePct int, warn WarningHandler) int {
 	if scalePct <= 0 {
 		scalePct = DefaultLogoScale(mods)
 	}
 	if scalePct > 100 {
-		if Warnf != nil {
-			Warnf("logo scale capped to 100%% of the cleared area")
+		if warn != nil {
+			warn("logo scale capped to 100%% of the cleared area")
 		}
 		scalePct = 100
 	}
@@ -94,6 +99,10 @@ func LogoBox(region, mods, scalePct int) int {
 // Both raster and vector renderers call this so a logo behaves identically
 // across output formats.
 func ResolveLogo(g Grid, configured int) int {
+	return ResolveLogoWithWarnings(g, configured, nil)
+}
+
+func ResolveLogoWithWarnings(g Grid, configured int, warn WarningHandler) int {
 	size := g.Size()
 
 	budget := 0
@@ -121,8 +130,8 @@ func ResolveLogo(g Grid, configured int) int {
 	if mods < 1 {
 		return 0
 	}
-	if capped && Warnf != nil {
-		Warnf("logo span capped to %d modules to stay scannable at this error-correction level", mods)
+	if capped && warn != nil {
+		warn("logo span capped to %d modules; logo sizing is a recommendation, not a scanability guarantee", mods)
 	}
 	return mods
 }

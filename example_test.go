@@ -18,7 +18,7 @@ func Example() {
 		panic(err)
 	}
 
-	fmt.Printf("version=%d size=%d segments=%d\n", code.Version, code.Size(), len(code.Segments))
+	fmt.Printf("version=%d size=%d segments=%d\n", code.Version(), code.Size(), len(code.Segments()))
 	// Output: version=2 size=25 segments=1
 }
 
@@ -28,7 +28,8 @@ func ExampleNewBinaryBuilder() {
 		panic(err)
 	}
 
-	fmt.Printf("segments=%d mode=%s\n", len(code.Segments), code.Segments[0].Mode())
+	segments := code.Segments()
+	fmt.Printf("segments=%d mode=%s\n", len(segments), segments[0].Mode())
 	// Output: segments=1 mode=Byte
 }
 

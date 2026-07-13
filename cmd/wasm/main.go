@@ -38,17 +38,17 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"image"
 	"image/color"
-	_ "image/jpeg"
-	_ "image/png"
+	"math"
+	"regexp"
 	"syscall/js"
 	"time"
 
 	"github.com/nachop51/qr-go"
 	"github.com/nachop51/qr-go/content"
+	qrlogo "github.com/nachop51/qr-go/logo"
 	"github.com/nachop51/qr-go/render"
 	"github.com/nachop51/qr-go/render/png"
 	"github.com/nachop51/qr-go/render/style"
@@ -97,43 +97,39 @@ func boolean(v js.Value, key string) bool {
 	return p.Type() == js.TypeBoolean && p.Bool()
 }
 
-func ecLevel(v js.Value) qr.CorrectionLevel {
+func ecLevel(v js.Value) (qr.CorrectionLevel, error) {
 	switch str(v, "ecLevel", "M") {
 	case "L":
-		return qr.CorrectionLevelLow
+		return qr.CorrectionLevelLow, nil
+	case "M":
+		return qr.CorrectionLevelMedium, nil
 	case "Q":
-		return qr.CorrectionLevelQuartile
+		return qr.CorrectionLevelQuartile, nil
 	case "H":
-		return qr.CorrectionLevelHigh
+		return qr.CorrectionLevelHigh, nil
 	default:
-		return qr.CorrectionLevelMedium
+		return 0, fmt.Errorf("invalid error-correction level")
 	}
 }
 
-func eciPolicy(v js.Value) qr.TextECIPolicy {
-	if str(v, "eciPolicy", "auto") == "disabled" {
-		return qr.TextECIPolicyDisabled
+func eciPolicy(v js.Value) (qr.TextECIPolicy, error) {
+	switch str(v, "eciPolicy", "auto") {
+	case "auto":
+		return qr.TextECIPolicyAuto, nil
+	case "disabled":
+		return qr.TextECIPolicyDisabled, nil
+	default:
+		return 0, fmt.Errorf("invalid ECI policy")
 	}
-	return qr.TextECIPolicyAuto
 }
 
 // parseHex parses #rgb and #rrggbb colors.
 func parseHex(s string) (color.Color, error) {
-	if len(s) == 0 || s[0] != '#' {
-		return nil, fmt.Errorf("invalid color %q: want #rgb or #rrggbb", s)
+	c, err := render.ParseCSSColor(s)
+	if err != nil {
+		return nil, err
 	}
-	hex := s[1:]
-	if len(hex) == 3 {
-		hex = string([]byte{hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]})
-	}
-	if len(hex) != 6 {
-		return nil, fmt.Errorf("invalid color %q: want #rgb or #rrggbb", s)
-	}
-	var r, g, b uint8
-	if _, err := fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b); err != nil {
-		return nil, fmt.Errorf("invalid color %q: %v", s, err)
-	}
-	return color.RGBA{R: r, G: g, B: b, A: 0xff}, nil
+	return c.RGBA, nil
 }
 
 // styleSpec carries the parsed style options; colors stay raw strings so the
@@ -194,9 +190,16 @@ func logoImage(v js.Value) (image.Image, error) {
 	if p.IsUndefined() || p.IsNull() {
 		return nil, nil
 	}
-	data := make([]byte, p.Get("length").Int())
+	if !p.InstanceOf(js.Global().Get("Uint8Array")) {
+		return nil, fmt.Errorf("decode logo: logo must be a Uint8Array")
+	}
+	n := p.Get("length").Int()
+	if n < 0 || n > qrlogo.MaxEncodedBytes {
+		return nil, fmt.Errorf("decode logo: encoded input exceeds 16 MiB")
+	}
+	data := make([]byte, n)
 	js.CopyBytesToGo(data, p)
-	img, _, err := image.Decode(bytes.NewReader(data))
+	img, err := qrlogo.DecodeBytes(data)
 	if err != nil {
 		return nil, fmt.Errorf("decode logo: %v", err)
 	}
@@ -220,10 +223,36 @@ func generate(opts js.Value) any {
 	}
 
 	format := str(opts, "format", "png")
+	level, err := ecLevel(opts)
+	if err != nil {
+		return errResult("%v", err)
+	}
+	policy, err := eciPolicy(opts)
+	if err != nil {
+		return errResult("%v", err)
+	}
+	version := num(opts, "version", 0)
+	mask := num(opts, "mask", -1)
+	quiet := num(opts, "quiet", -1)
+	if version < 0 || version > 40 {
+		return errResult("version must be 0 or between 1 and 40")
+	}
+	if mask < -1 || mask > 7 {
+		return errResult("mask must be -1 or between 0 and 7")
+	}
+	if quiet < -1 || quiet > 256 {
+		return errResult("quiet zone must be between 0 and 256")
+	}
+	logoModules := num(opts, "logoModules", 0)
+	if logoModules < 0 {
+		return errResult("logoModules must be non-negative")
+	}
+	var warnings []any
+	warn := func(format string, args ...any) { warnings = append(warnings, fmt.Sprintf(format, args...)) }
 	var renderer render.Renderer
 	switch format {
 	case "png":
-		r := png.New()
+		r := png.New().WarningHandler(warn)
 		if c := str(opts, "dark", ""); c != "" {
 			col, err := parseHex(c)
 			if err != nil {
@@ -238,14 +267,18 @@ func generate(opts js.Value) any {
 			}
 			r = r.White(col)
 		}
-		if n := num(opts, "quiet", -1); n >= 0 {
-			r = r.Quiet(n)
+		if quiet >= 0 {
+			r = r.Quiet(quiet)
 		}
-		if n := num(opts, "size", 0); n > 0 {
+		if value := opts.Get("size"); value.Type() == js.TypeNumber {
+			n := value.Int()
+			if n < 1 || n > 4096 {
+				return errResult("PNG size must be between 1 and 4096")
+			}
 			r = r.Width(n).Height(n)
 		}
 		if logo != nil {
-			r = r.Logo(logo).LogoModules(num(opts, "logoModules", 0)).LogoScale(num(opts, "logoScale", 0))
+			r = r.Logo(logo).LogoModules(logoModules).LogoScale(num(opts, "logoScale", 0))
 		}
 		r = r.ModuleShape(st.module).EyeFrameShape(st.frame).EyeBallShape(st.ball)
 		if st.eyeFrame != "" {
@@ -279,21 +312,25 @@ func generate(opts js.Value) any {
 		}
 		renderer = r
 	case "svg":
-		r := svg.New()
+		r := svg.New().WarningHandler(warn)
 		if c := str(opts, "dark", ""); c != "" {
 			r = r.Dark(c)
 		}
 		if c := str(opts, "light", ""); c != "" {
 			r = r.Light(c)
 		}
-		if n := num(opts, "quiet", -1); n >= 0 {
-			r = r.Quiet(n)
+		if quiet >= 0 {
+			r = r.Quiet(quiet)
 		}
-		if n := num(opts, "moduleSize", 0); n > 0 {
+		if value := opts.Get("moduleSize"); value.Type() == js.TypeNumber {
+			n := value.Int()
+			if n < 1 || n > 1024 {
+				return errResult("SVG moduleSize must be between 1 and 1024")
+			}
 			r = r.Module(n)
 		}
 		if logo != nil {
-			r = r.Logo(logo).LogoModules(num(opts, "logoModules", 0)).LogoScale(num(opts, "logoScale", 0))
+			r = r.Logo(logo).LogoModules(logoModules).LogoScale(num(opts, "logoScale", 0))
 		}
 		r = r.ModuleShape(st.module).EyeFrameShape(st.frame).EyeBallShape(st.ball).
 			EyeFrame(st.eyeFrame).EyeBall(st.eyeBall)
@@ -309,27 +346,20 @@ func generate(opts js.Value) any {
 
 	builder := qr.NewTextBuilder(text).
 		SetRenderer(renderer).
-		SetErrorCorrectionLevel(ecLevel(opts)).
-		SetTextECIPolicy(eciPolicy(opts))
-	if v := num(opts, "version", 0); v > 0 {
-		builder = builder.SetVersion(v)
+		SetErrorCorrectionLevel(level).
+		SetTextECIPolicy(policy)
+	if version > 0 {
+		builder = builder.SetVersion(version)
 	}
-	if m := num(opts, "mask", -1); m >= 0 {
-		builder = builder.SetMask(m)
+	if mask >= 0 {
+		builder = builder.SetMask(mask)
 	}
 	code, err := builder.Build()
 	if err != nil {
 		return errResult("%v", err)
 	}
 
-	// Collect non-fatal adjustments (e.g. logo span capped) for the UI.
-	var warnings []any
-	prevWarnf := render.Warnf
-	render.Warnf = func(format string, args ...any) {
-		warnings = append(warnings, fmt.Sprintf(format, args...))
-	}
 	data, err := code.Bytes()
-	render.Warnf = prevWarnf
 	if err != nil {
 		return errResult("%v", err)
 	}
@@ -345,8 +375,8 @@ func generate(opts js.Value) any {
 	return map[string]any{
 		"data":           out,
 		"size":           code.Size(),
-		"version":        code.Version,
-		"mask":           code.Mask,
+		"version":        code.Version(),
+		"mask":           code.Mask(),
 		"maxLogoModules": code.MaxLogoModules(),
 		"warnings":       warnings,
 	}
@@ -359,10 +389,16 @@ func parseEventTime(s string) (time.Time, bool, error) {
 	if t, err := time.Parse("2006-01-02", s); err == nil {
 		return t, true, nil
 	}
-	// datetime-local inputs produce "2006-01-02T15:04" (no zone, no seconds).
-	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02T15:04"} {
-		if t, err := time.Parse(layout, s); err == nil {
-			return t, false, nil
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, false, nil
+	}
+	// Date parses a datetime-local value in the browser's local timezone.
+	if matched, _ := regexp.MatchString(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$`, s); matched {
+		d := js.Global().Get("Date").New(s)
+		if !math.IsNaN(d.Call("getTime").Float()) {
+			if t, err := time.Parse(time.RFC3339Nano, d.Call("toISOString").String()); err == nil {
+				return t, false, nil
+			}
 		}
 	}
 	return time.Time{}, false, fmt.Errorf("invalid time %q: want YYYY-MM-DD or RFC 3339", s)
@@ -371,10 +407,14 @@ func parseEventTime(s string) (time.Time, bool, error) {
 func contentAPI() map[string]any {
 	return map[string]any{
 		"wifi": safe(func(o js.Value) any {
+			auth := content.WiFiAuth(str(o, "auth", ""))
+			if auth != "" && auth != content.WiFiWPA && auth != content.WiFiWEP && auth != content.WiFiNone {
+				return errResult("unsupported Wi-Fi authentication %q", auth)
+			}
 			return content.WiFi{
 				SSID:   str(o, "ssid", ""),
 				Pass:   str(o, "pass", ""),
-				Auth:   content.WiFiAuth(str(o, "auth", "")),
+				Auth:   auth,
 				Hidden: boolean(o, "hidden"),
 			}.String()
 		}),
@@ -400,13 +440,20 @@ func contentAPI() map[string]any {
 			if err != nil {
 				return errResult("end: %v", err)
 			}
+			if !start.IsZero() && !end.IsZero() && startAllDay != endAllDay {
+				return errResult("event start and end must both be dates or both be date-times")
+			}
+			allDay := startAllDay || endAllDay
+			if allDay && (start.IsZero() || end.IsZero() || !startAllDay || !endAllDay) {
+				return errResult("all-day events require date-only start and end values")
+			}
 			return content.Event{
 				Summary:     str(o, "summary", ""),
 				Location:    str(o, "location", ""),
 				Description: str(o, "description", ""),
 				Start:       start,
 				End:         end,
-				AllDay:      startAllDay && (end.IsZero() || endAllDay),
+				AllDay:      allDay,
 			}.String()
 		}),
 		"url": safe(func(o js.Value) any {
@@ -423,7 +470,11 @@ func contentAPI() map[string]any {
 			if lat.Type() != js.TypeNumber || lng.Type() != js.TypeNumber {
 				return errResult("lat and lng must be numbers")
 			}
-			return content.Geo(lat.Float(), lng.Float())
+			la, lo := lat.Float(), lng.Float()
+			if math.IsNaN(la) || math.IsInf(la, 0) || la < -90 || la > 90 || math.IsNaN(lo) || math.IsInf(lo, 0) || lo < -180 || lo > 180 {
+				return errResult("coordinates must be finite and within latitude [-90,90], longitude [-180,180]")
+			}
+			return content.Geo(la, lo)
 		}),
 		"email": safe(func(o js.Value) any {
 			return content.Email(str(o, "to", ""), str(o, "subject", ""), str(o, "body", ""))

@@ -353,6 +353,7 @@ function options(format: "png" | "svg"): GenerateOptions {
 }
 
 function showEmpty(message: string, isProblem = false): void {
+	clearPreviewURL();
   previewEl.removeAttribute("role");
   previewEl.removeAttribute("aria-label");
   previewEl.innerHTML = "";
@@ -365,6 +366,13 @@ function showEmpty(message: string, isProblem = false): void {
   payloadEl.textContent = "";
   lastResult = null;
   setDownloadsEnabled(false);
+}
+
+let previewObjectURL: string | null = null;
+
+function clearPreviewURL(): void {
+  if (previewObjectURL) URL.revokeObjectURL(previewObjectURL);
+  previewObjectURL = null;
 }
 
 function setDownloadsEnabled(on: boolean): void {
@@ -414,12 +422,15 @@ function render(): void {
   lastResult = result;
   previewEl.setAttribute("role", "img");
   previewEl.setAttribute("aria-label", `QR code, ${result.size} by ${result.size} modules, encoding: ${payload.length > 60 ? payload.slice(0, 60) + "…" : payload}`);
-  previewEl.innerHTML = result.data as string;
-  const svg = previewEl.querySelector("svg");
-  if (svg) {
-    svg.setAttribute("width", "100%");
-    svg.setAttribute("height", "100%");
-  }
+  clearPreviewURL();
+  previewEl.replaceChildren();
+  const previewImage = document.createElement("img");
+  previewImage.alt = "";
+  previewImage.width = 1000;
+  previewImage.height = 1000;
+  previewObjectURL = URL.createObjectURL(new Blob([result.data as string], { type: "image/svg+xml" }));
+  previewImage.src = previewObjectURL;
+  previewEl.append(previewImage);
   ticketEl.classList.remove("printed");
   void ticketEl.offsetWidth; // restart the re-print flick
   ticketEl.classList.add("printed");
@@ -444,6 +455,7 @@ function render(): void {
 // resolution is pure overhead: every regeneration would decode it in wasm and
 // the SVG renderer would embed it as a data URI. Shrink it once, up front.
 async function downscaleLogo(file: File, maxDim = 512): Promise<Uint8Array> {
+	if (file.size > 16 * 1024 * 1024) throw new Error("Logo input must be 16 MiB or smaller");
   // SVG bytes are already tiny and Go rasterizes them at its own target size;
   // pushing one through canvas would just bake it into a PNG.
   if (file.type === "image/svg+xml") {
@@ -749,7 +761,12 @@ function wireStyleControls(): void {
   logoInput.addEventListener("change", async () => {
     const file = logoInput.files?.[0];
     if (!file) return;
-    state.logo = await downscaleLogo(file);
+    try {
+      state.logo = await downscaleLogo(file);
+    } catch (error) {
+      logoInput.value = "";
+      return showEmpty(error instanceof Error ? error.message : "Invalid logo", true);
+    }
     // A logo eats modules; High recovers the most, so switch to it quietly.
     setEcLevel("H");
     logoName.textContent = file.name;

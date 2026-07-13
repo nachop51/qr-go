@@ -25,6 +25,8 @@ const (
 	ModuleDot
 )
 
+func (m ModuleShape) Valid() bool { return m <= ModuleDot }
+
 func (m ModuleShape) String() string {
 	switch m {
 	case ModuleRounded:
@@ -56,6 +58,8 @@ const (
 	EyeCircle
 )
 
+func (e EyeShape) Valid() bool { return e <= EyeCircle }
+
 func (e EyeShape) String() string {
 	switch e {
 	case EyeRounded:
@@ -86,6 +90,8 @@ const (
 	GradientLinear
 	GradientRadial
 )
+
+func (g GradientKind) Valid() bool { return g <= GradientRadial }
 
 func ParseGradientKind(s string) (GradientKind, error) {
 	switch s {
@@ -156,13 +162,13 @@ func CornerMask(g render.Grid, x, y int) Corners {
 	return c
 }
 
-// WarnContrast emits a render.Warnf warning when fg is too close in
+// WarnContrast emits a renderer-local warning when fg is too close in
 // luminance to bg for reliable scanning. The threshold (2:1 WCAG-style
 // contrast ratio) is deliberately loose: it flags decorative choices that
 // will genuinely break decoding, not tasteful low-contrast palettes.
-func WarnContrast(name string, fg, bg color.Color) {
-	if contrastRatio(fg, bg) < 2 {
-		render.Warnf("%s has low contrast against the background; the code may not scan", name)
+func WarnContrast(warn render.WarningHandler, name string, fg, bg color.Color) {
+	if warn != nil && contrastRatio(fg, bg) < 2 {
+		warn("%s has low contrast against the background; the code may not scan", name)
 	}
 }
 

@@ -2,6 +2,7 @@ package svg
 
 import (
 	"bytes"
+	"encoding/xml"
 	"image"
 	"image/color"
 	"image/draw"
@@ -11,6 +12,31 @@ import (
 	"github.com/nachop51/qr-go/render"
 	"github.com/nachop51/qr-go/render/style"
 )
+
+func TestSVGRejectsPaintInjectionAndEmitsXML(t *testing.T) {
+	if _, err := New().Dark(`red\"/><script>alert(1)</script>`).Bytes(fakeGrid{n: 21}); err == nil {
+		t.Fatal("expected injected color to be rejected")
+	}
+	out, err := New().Dark("hsl(0, 100%, 50%)").Bytes(fakeGrid{n: 21})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root struct{ XMLName xml.Name }
+	if err := xml.Unmarshal(out, &root); err != nil {
+		t.Fatalf("invalid XML: %v", err)
+	}
+	if root.XMLName.Local != "svg" {
+		t.Fatalf("root = %q", root.XMLName.Local)
+	}
+}
+
+func TestSVGRejectsInvalidOptions(t *testing.T) {
+	for _, r := range []SVG{New().Quiet(-1), New().Quiet(257), New().Module(0), New().Module(1025)} {
+		if _, err := r.Bytes(fakeGrid{n: 21}); err == nil {
+			t.Error("expected invalid options error")
+		}
+	}
+}
 
 type fakeGrid struct{ n int }
 
@@ -106,12 +132,10 @@ func TestSVGLogo(t *testing.T) {
 // An oversized span is capped to the grid's budget, reported once via Warnf.
 func TestSVGLogoCapped(t *testing.T) {
 	var warns int
-	orig := render.Warnf
-	render.Warnf = func(string, ...any) { warns++ }
-	defer func() { render.Warnf = orig }()
+	warn := func(string, ...any) { warns++ }
 
 	var buf bytes.Buffer
-	if err := New().Writer(&buf).Logo(solidLogo(64)).LogoModules(9).Render(budgetGrid{n: 25, budget: 3}); err != nil {
+	if err := New().Writer(&buf).WarningHandler(warn).Logo(solidLogo(64)).LogoModules(9).Render(budgetGrid{n: 25, budget: 3}); err != nil {
 		t.Fatal(err)
 	}
 	// Capped to 3: start=(25-3)/2=11 -> region at (150,150), 30x30.
@@ -187,7 +211,7 @@ func TestSVGStyledEyeColorOnly(t *testing.T) {
 	if got := strings.Count(out, `<path fill=`); got != 3 {
 		t.Fatalf("expected 3 paint groups, got %d: %s", got, out)
 	}
-	if !strings.Contains(out, `<path fill="red" d="`) {
+	if !strings.Contains(out, `<path fill="#ff0000" d="`) {
 		t.Fatalf("expected red eye frame path, got: %s", out)
 	}
 }

@@ -2,9 +2,11 @@ package logo
 
 import (
 	"bytes"
+	"encoding/base64"
 	"image"
 	"image/color"
 	"image/draw"
+	"image/gif"
 	"image/jpeg"
 	"image/png"
 	"testing"
@@ -53,6 +55,36 @@ func TestDecodeJPEG(t *testing.T) {
 	}
 }
 
+func TestDecodeGIF(t *testing.T) {
+	var buf bytes.Buffer
+	if err := gif.Encode(&buf, solid(12, 9, color.RGBA{200, 30, 30, 255}), nil); err != nil {
+		t.Fatal(err)
+	}
+	img, err := DecodeBytes(buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if img.Bounds().Dx() != 12 || img.Bounds().Dy() != 9 {
+		t.Fatalf("bounds = %v, want 12x9", img.Bounds())
+	}
+}
+
+func TestDecodeWebP(t *testing.T) {
+	// A small lossless WebP fixture keeps this test independent of external
+	// tools; x/image/webp intentionally provides a decoder but no encoder.
+	data, err := base64.StdEncoding.DecodeString("UklGRrIBAABXRUJQVlA4TKUBAAAvSsAYAA8w//M///MfeJAkbXvaSG7m8Q3GfYSBJekwQztm/IcZlgwnmWImn2BK7aFmBtnVir6q//8VOkFE/xm4baTIu8c48ArEo6+B3zFKYln3pqClSCKX0begFTAXFOLXHSyF8cCNcZEG4OywuA4KVVfJCiArU7GAgJI8+lJP/OKMT/fBAjevg1cYB7YVkFuWga2lyPi5I0HFy5YTpWIHg0RZpkniRVW9odHAKOwosWuOGdxIyn2OvaCDvhg/we6TwadPBPbqBV58MsLmMJ8yZnOWk8SRz4N+QoyPL+MnamzMvcE1rHNEr91F9GKZPVUcS9w7PhhH36suB9qPeYb/oLk6cuTiJ0wOK3m5h1cKjW6EVZCYMK7dxcKCBdgP9HkKr9gkAO2P8GKZGWVdIAatQa+1IDpt6qyorVwdy01xdW8Jkfk6xjEXmVQQ+HQdFr6OKhIN34dXWq0+0qr6EJSCeeVLH9+gvGTLyqM65PQ44ihzlTXxQKjKbAvshXgir7Lil9w4L2bvMycmjQcqXaMCO6BlY28i+FOLzbfI1vEqxAhotocAAA==")
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := DecodeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if img.Bounds().Dx() != 75 || img.Bounds().Dy() != 100 {
+		t.Fatalf("bounds = %v, want 75x100", img.Bounds())
+	}
+}
+
 func TestDecodeSVG(t *testing.T) {
 	svg := []byte(`<?xml version="1.0"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
@@ -76,10 +108,27 @@ func TestIsSVG(t *testing.T) {
 		`<?xml version="1.0"?>` + "\n" + `<svg>`:   true,
 		"\x89PNG\r\n\x1a\n":                        false,
 		"just some text":                           false,
+		"binary payload with <svg later":           false,
 	}
 	for in, want := range cases {
 		if got := isSVG([]byte(in)); got != want {
 			t.Errorf("isSVG(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+func TestDecodeLimitsAndPathologicalSVG(t *testing.T) {
+	if _, err := DecodeBytes(make([]byte, MaxEncodedBytes+1)); err == nil {
+		t.Fatal("expected oversized encoded input to be rejected")
+	}
+	bad := []string{
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10000001 1"/>`,
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000000 1"/>`,
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 NaN 1"/>`,
+	}
+	for _, input := range bad {
+		if _, err := DecodeBytes([]byte(input)); err == nil {
+			t.Errorf("expected SVG %q to be rejected", input)
 		}
 	}
 }

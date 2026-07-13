@@ -4,7 +4,7 @@ WASM_OUT  := web/qr.wasm
 WASM_EXEC := web/src/vendor/wasm_exec.js
 GOROOT    := $(shell go env GOROOT)
 
-.PHONY: all build wasm serve web-build test race cover vet fmt fmt-check check install clean help
+.PHONY: all build wasm serve web-build web-test web-smoke test race vuln cover vet fmt fmt-check check install clean help
 
 all: build wasm ## Build the CLI and the wasm bundle
 
@@ -33,12 +33,19 @@ serve: wasm ## Build wasm and start the web dev server (bun, with HMR)
 	cd web && bun index.html
 
 web-check: wasm ## Typecheck the web app
-	cd web && bun x tsc --noEmit
+	cd web && bun run typecheck
+
+web-test: ## Run Bun unit tests
+	cd web && bun test src
+
+web-smoke: wasm ## Run the Chromium browser smoke tests
+	cd web && bun run smoke
 
 web-build: wasm ## Build the production web bundle into web/dist
 	rm -rf web/dist
 	cd web && bun build index.html --outdir dist --minify
 	cp web/_headers web/robots.txt web/llms.txt web/dist/
+	cp -R web/fonts web/dist/
 	@if [ -f web/social-card.png ]; then cp web/social-card.png web/dist/; else echo "warning: web/social-card.png missing (og:image will 404)"; fi
 	@echo "dist: $$(du -sh web/dist | cut -f1)"
 
@@ -46,7 +53,10 @@ test: ## Run all tests
 	go test ./...
 
 race: ## Run all tests with the race detector
-	go test -race ./...
+	go test -count=1 -race ./...
+
+vuln: ## Scan Go dependencies with govulncheck
+	govulncheck ./...
 
 cover: ## Run tests with coverage and open the report
 	go test -race -coverprofile=coverage.out ./...
@@ -66,7 +76,7 @@ fmt-check: ## Fail if any file is not gofmt-ed (CI check)
 		exit 1; \
 	fi
 
-check: fmt-check vet build race ## Everything CI runs: fmt, vet, build, race tests
+check: fmt-check vet build race ## Core Go checks (CI also runs vuln and web gates)
 
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR) coverage.out $(WASM_OUT)

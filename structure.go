@@ -119,17 +119,17 @@ func placeData(m *matrix.Matrix, data []byte) {
 	}
 }
 
-func bitOf(f uint16, i int) int {
+func bitOf(f uint32, i int) int {
 	return int((f >> uint(i)) & 1)
 }
 
 func placeMetadata(m *matrix.Matrix, version, mask int, ec CorrectionLevel) {
-	group := (ec.value << 3) | mask
+	group := (ec.formatBits() << 3) | mask
 	encFormat := encodeFormat(uint16(group))
 	encVersion := encodeVersion(uint16(version))
 
 	for _, fm := range spec.FormatModules(version) {
-		bit := bitOf(encFormat, fm.Bit)
+		bit := bitOf(uint32(encFormat), fm.Bit)
 		m.Set(fm.X, fm.Y, matrix.Color(bit))
 	}
 
@@ -138,7 +138,7 @@ func placeMetadata(m *matrix.Matrix, version, mask int, ec CorrectionLevel) {
 	}
 
 	for _, vm := range spec.VersionModules(version) {
-		bit := bitOf(uint16(encVersion), vm.Bit)
+		bit := bitOf(encVersion, vm.Bit)
 		m.Set(vm.X, vm.Y, matrix.Color(bit))
 	}
 }

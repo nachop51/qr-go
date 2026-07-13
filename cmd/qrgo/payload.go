@@ -129,8 +129,8 @@ func buildPayload(o *options, typ string, args []string, stdin []byte) (text str
 			Summary:     o.summary,
 			Location:    o.location,
 			Description: o.description,
-			AllDay:      o.allDay,
 		}
+		var startDate, endDate bool
 		if e.Summary == "" {
 			e.Summary = firstArg(args)
 		}
@@ -140,7 +140,7 @@ func buildPayload(o *options, typ string, args []string, stdin []byte) (text str
 				return "", nil, false, fmt.Errorf("event --start: %w", err)
 			}
 			e.Start = t
-			e.AllDay = e.AllDay || dateOnly
+			startDate = dateOnly
 		}
 		if o.end != "" {
 			t, dateOnly, err := parseEventTime(o.end)
@@ -148,7 +148,14 @@ func buildPayload(o *options, typ string, args []string, stdin []byte) (text str
 				return "", nil, false, fmt.Errorf("event --end: %w", err)
 			}
 			e.End = t
-			e.AllDay = e.AllDay || dateOnly
+			endDate = dateOnly
+		}
+		if !e.Start.IsZero() && !e.End.IsZero() && startDate != endDate {
+			return "", nil, false, fmt.Errorf("event: start and end must both be dates or both be date-times")
+		}
+		e.AllDay = o.allDay || startDate || endDate
+		if e.AllDay && (e.Start.IsZero() || e.End.IsZero() || !startDate || !endDate) {
+			return "", nil, false, fmt.Errorf("event: all-day events require date-only start and end values")
 		}
 		if e.Summary == "" && e.Location == "" && e.Description == "" && e.Start.IsZero() && e.End.IsZero() {
 			return "", nil, false, usageError{"event: provide at least a summary (--summary or a positional argument)"}
@@ -219,12 +226,15 @@ func parseWiFiAuth(s string) (content.WiFiAuth, error) {
 // bare "2006-01-02" (which reports dateOnly = true so the event is all-day).
 func parseEventTime(s string) (t time.Time, dateOnly bool, err error) {
 	s = strings.TrimSpace(s)
-	for _, layout := range []string{time.RFC3339, "2006-01-02 15:04", "2006-01-02T15:04"} {
-		if t, err = time.Parse(layout, s); err == nil {
+	if t, err = time.Parse(time.RFC3339, s); err == nil {
+		return t, false, nil
+	}
+	for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02T15:04:05", "2006-01-02 15:04", "2006-01-02T15:04"} {
+		if t, err = time.ParseInLocation(layout, s, time.Local); err == nil {
 			return t, false, nil
 		}
 	}
-	if t, err = time.Parse("2006-01-02", s); err == nil {
+	if t, err = time.ParseInLocation("2006-01-02", s, time.Local); err == nil {
 		return t, true, nil
 	}
 	return time.Time{}, false, fmt.Errorf("invalid time %q (use RFC3339, \"2006-01-02 15:04\", or \"2006-01-02\")", s)

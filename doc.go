@@ -13,8 +13,9 @@
 //	code.Render() // uses the configured renderer (terminal by default)
 //
 // The builder picks the encoding segmentation, symbol version, and mask
-// automatically. The resulting [Code] exposes the outcome ([Code.Version],
-// [Code.Mask], [Code.Size], [Code.IsDark]) and the module matrix.
+// automatically. The resulting [Code] exposes the outcome through immutable
+// accessors ([Code.Version], [Code.Mask], [Code.CorrectionLevel], [Code.UsesECI],
+// [Code.Segments], [Code.Size], and [Code.IsDark]).
 //
 // Output is produced by a [github.com/nachop51/qr-go/render.Renderer]. Three
 // implementations ship with the module:

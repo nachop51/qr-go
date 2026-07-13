@@ -2,10 +2,13 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	qr "github.com/nachop51/qr-go"
+	"github.com/nachop51/qr-go/render"
 	"github.com/spf13/cobra"
 )
 
@@ -55,6 +58,9 @@ type options struct {
 	logoScale   int
 	noECI       bool
 	info        bool
+	version     int
+	mask        int
+	warn        render.WarningHandler
 
 	// Styling (PNG/SVG only)
 	shape         string
@@ -146,7 +152,7 @@ func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "qrgo [text...] | qrgo <type> [args]",
 		Short:         "Generate QR codes from the terminal",
-		Version:       version,
+		Version:       "",
 		Long:          longDescription,
 		Args:          cobra.ArbitraryArgs,
 		SilenceUsage:  true,
@@ -185,9 +191,20 @@ func newRootCmd() *cobra.Command {
 	f.StringVar(&o.eyeBall, "eye-ball", "", "finder ball color (default: --dark)")
 	f.StringVar(&o.gradient, "gradient", "", "module gradient: linear:<from>:<to>[:angle] or radial:<from>:<to>")
 	f.BoolVar(&o.noECI, "no-eci", false, "disable automatic ECI for text")
-	f.BoolVarP(&o.info, "info", "i", false, "print the encoding outcome (version, mask, segments) to stdout")
+	f.IntVar(&o.version, "version", 0, "QR version 1-40 (0 = automatic)")
+	f.IntVar(&o.mask, "mask", -1, "mask pattern 0-7 (-1 = automatic)")
+	f.BoolVarP(&o.info, "info", "i", false, "print the encoding outcome (version, mask, segments) to stderr")
 
 	cmd.AddCommand(contentCommands(o)...)
+	cmd.AddCommand(&cobra.Command{
+		Use:   "build-version",
+		Short: "Print the qrgo program version",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			_, err := fmt.Fprintln(cmd.OutOrStdout(), version)
+			return err
+		},
+	})
 
 	return cmd
 }
@@ -250,18 +267,23 @@ func (o *options) encode(cmd *cobra.Command, typ string, args []string, stdin []
 		return err
 	}
 
-	// Resolve the output sink: a file if -o is set, else the command's stdout.
-	out := cmd.OutOrStdout()
-	if o.output != "" {
-		file, err := os.Create(o.output)
-		if err != nil {
-			return err
-		}
-		defer file.Close()
-		out = file
+	if o.version < 0 || o.version > 40 {
+		return fmt.Errorf("--version must be 0 or between 1 and 40")
+	}
+	if o.mask < -1 || o.mask > 7 {
+		return fmt.Errorf("--mask must be -1 or between 0 and 7")
+	}
+	if o.quiet < -1 || o.quiet > 256 {
+		return fmt.Errorf("--quiet must be between 0 and 256")
+	}
+	if o.logoModules < 0 {
+		return fmt.Errorf("--logo-modules must be non-negative")
 	}
 
-	renderer, err := buildRenderer(format, o, out)
+	// Build and render fully before touching the destination. This keeps an
+	// existing output byte-for-byte intact on every validation/render failure.
+	o.warn = func(format string, args ...any) { fmt.Fprintf(cmd.ErrOrStderr(), "qr: "+format+"\n", args...) }
+	renderer, err := buildRenderer(format, o, io.Discard)
 	if err != nil {
 		return err
 	}
@@ -288,19 +310,66 @@ func (o *options) encode(cmd *cobra.Command, typ string, args []string, stdin []
 		b.SetTextECIPolicy(qr.TextECIPolicyDisabled)
 	}
 	b.SetRenderer(renderer)
+	if o.version != 0 {
+		b.SetVersion(o.version)
+	}
+	if o.mask != -1 {
+		b.SetMask(o.mask)
+	}
 
 	code, err := b.Build()
 	if err != nil {
 		return err
 	}
 
-	// --info goes to stdout. When output is a file, that's the terminal; when the
-	// code itself renders to stdout (terminal format) it prints just before it.
 	if o.info {
-		printInfo(cmd.OutOrStdout(), code)
+		printInfo(cmd.ErrOrStderr(), code)
 	}
 
-	return code.Render()
+	dataOut, err := code.Bytes()
+	if err != nil {
+		return err
+	}
+	if o.output == "" {
+		_, err = cmd.OutOrStdout().Write(dataOut)
+		return err
+	}
+	return atomicWriteFile(o.output, dataOut)
+}
+
+func atomicWriteFile(path string, data []byte) (err error) {
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	mode := os.FileMode(0o644)
+	if info, statErr := os.Stat(path); statErr == nil {
+		mode = info.Mode().Perm()
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return statErr
+	}
+	f, err := os.CreateTemp(dir, "."+base+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer func() {
+		f.Close()
+		if err != nil {
+			_ = os.Remove(tmp)
+		}
+	}()
+	if err = f.Chmod(mode); err != nil {
+		return err
+	}
+	if _, err = f.Write(data); err != nil {
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	if err = os.Rename(tmp, path); err != nil {
+		return err
+	}
+	return nil
 }
 
 // readPipedStdin returns stdin's contents when it is piped or redirected. For a

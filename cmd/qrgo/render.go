@@ -73,6 +73,10 @@ func buildRenderer(format string, o *options, w io.Writer) (render.Renderer, err
 		return t, nil
 
 	case "png":
+		warn := o.warn
+		if warn == nil {
+			warn = render.StderrWarningHandler
+		}
 		dark, err := parseHexColor(o.dark)
 		if err != nil {
 			return nil, fmt.Errorf("--dark: %w", err)
@@ -85,7 +89,7 @@ func buildRenderer(format string, o *options, w io.Writer) (render.Renderer, err
 		if o.size > 0 {
 			width, height = o.size, o.size
 		}
-		p := png.New().Writer(w).Dark(dark).White(light).Width(width).Height(height)
+		p := png.New().Writer(w).WarningHandler(warn).Dark(dark).White(light).Width(width).Height(height)
 		p = p.ModuleShape(st.module).EyeFrameShape(st.frame).EyeBallShape(st.ball)
 		if o.eyeFrame != "" {
 			c, err := parseHexColor(o.eyeFrame)
@@ -129,7 +133,11 @@ func buildRenderer(format string, o *options, w io.Writer) (render.Renderer, err
 		return p, nil
 
 	case "svg":
-		s := svg.New().Writer(w).Dark(o.dark).Light(o.light).Module(o.scale)
+		warn := o.warn
+		if warn == nil {
+			warn = render.StderrWarningHandler
+		}
+		s := svg.New().Writer(w).WarningHandler(warn).Dark(o.dark).Light(o.light).Module(o.scale)
 		s = s.ModuleShape(st.module).EyeFrameShape(st.frame).EyeBallShape(st.ball).
 			EyeFrame(o.eyeFrame).EyeBall(o.eyeBall)
 		if st.gradKind == style.GradientRadial {
@@ -273,7 +281,7 @@ func parseECC(s string) (qr.CorrectionLevel, error) {
 	case "H", "HIGH":
 		return qr.CorrectionLevelHigh, nil
 	default:
-		return qr.CorrectionLevel{}, fmt.Errorf("invalid error-correction level %q (want L, M, Q, or H)", s)
+		return 0, fmt.Errorf("invalid error-correction level %q (want L, M, Q, or H)", s)
 	}
 }
 
@@ -293,51 +301,21 @@ func eccName(l qr.CorrectionLevel) string {
 	}
 }
 
-// parseHexColor parses #rgb, #rrggbb, or #rrggbbaa (the leading # is optional).
+// parseHexColor retains its historical name but uses the shared strict CSS
+// grammar so PNG and SVG accept exactly the same color inputs.
 func parseHexColor(s string) (color.Color, error) {
-	h := strings.TrimPrefix(strings.TrimSpace(s), "#")
-	component := func(sub string) (uint8, error) {
-		v, err := strconv.ParseUint(sub, 16, 8)
-		return uint8(v), err
-	}
-
-	c := color.RGBA{A: 0xff}
-	var err error
-	switch len(h) {
-	case 3: // #rgb -> #rrggbb
-		if c.R, err = component(string([]byte{h[0], h[0]})); err == nil {
-			if c.G, err = component(string([]byte{h[1], h[1]})); err == nil {
-				c.B, err = component(string([]byte{h[2], h[2]}))
-			}
-		}
-	case 6:
-		if c.R, err = component(h[0:2]); err == nil {
-			if c.G, err = component(h[2:4]); err == nil {
-				c.B, err = component(h[4:6])
-			}
-		}
-	case 8:
-		if c.R, err = component(h[0:2]); err == nil {
-			if c.G, err = component(h[2:4]); err == nil {
-				if c.B, err = component(h[4:6]); err == nil {
-					c.A, err = component(h[6:8])
-				}
-			}
-		}
-	default:
-		return nil, fmt.Errorf("invalid color %q (use #rgb, #rrggbb, or #rrggbbaa)", s)
-	}
+	c, err := render.ParseCSSColor(s)
 	if err != nil {
-		return nil, fmt.Errorf("invalid color %q (use #rgb, #rrggbb, or #rrggbbaa)", s)
+		return nil, err
 	}
-	return c, nil
+	return color.RGBA{R: c.RGBA.R, G: c.RGBA.G, B: c.RGBA.B, A: c.RGBA.A}, nil
 }
 
 // printInfo writes the encoding outcome for -i/--info.
 func printInfo(w io.Writer, code *qr.Code) {
 	fmt.Fprintf(w, "version=%d mask=%d ecc=%s size=%d eci=%v\n",
-		code.Version, code.Mask, eccName(code.ErrorCorrectionLevel), code.Size(), code.IsECI)
-	for i, s := range code.Segments {
+		code.Version(), code.Mask(), eccName(code.CorrectionLevel()), code.Size(), code.UsesECI())
+	for i, s := range code.Segments() {
 		fmt.Fprintf(w, "segment[%d] mode=%s len=%d data=%q\n", i, s.Mode(), len(s.Data()), s.Data())
 	}
 }

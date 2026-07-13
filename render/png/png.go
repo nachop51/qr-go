@@ -2,6 +2,7 @@ package png
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -38,6 +39,7 @@ type PNG struct {
 	gradFrom    color.Color
 	gradTo      color.Color
 	gradAngle   float64
+	warn        render.WarningHandler
 }
 
 func New() PNG {
@@ -53,7 +55,7 @@ func New() PNG {
 //
 // A logo hides the modules it covers; a span wider than the code's
 // error-correction budget is capped to that budget so the result still scans,
-// and the reduction is reported through render.Warnf.
+// and the reduction is reported through the renderer's WarningHandler.
 func (p PNG) Logo(img image.Image) PNG {
 	p.logo = img
 	return p
@@ -86,6 +88,9 @@ func (p PNG) Writer(w io.Writer) PNG {
 	p.w = w
 	return p
 }
+
+// WarningHandler sets the destination for non-fatal rendering advice.
+func (p PNG) WarningHandler(warn render.WarningHandler) PNG { p.warn = warn; return p }
 
 func (p PNG) Dark(c color.Color) PNG {
 	p.dark = c
@@ -167,8 +172,41 @@ func (p PNG) drawQuiet(img *image.RGBA) {
 	draw.Draw(img, img.Bounds(), &image.Uniform{C: p.white}, image.Point{}, draw.Src)
 }
 
+// validate checks every option before allocating the output image.
+func (p PNG) validate(g render.Grid) error {
+	if err := render.ValidateGrid(g); err != nil {
+		return err
+	}
+	if p.quiet < 0 || p.quiet > 256 {
+		return fmt.Errorf("png: quiet zone must be between 0 and 256")
+	}
+	if p.width < 1 || p.height < 1 || p.width > 8192 || p.height > 8192 || int64(p.width)*int64(p.height) > 64_000_000 {
+		return fmt.Errorf("png: dimensions must be positive, at most 8192x8192 and 64 megapixels")
+	}
+	if p.dark == nil || p.white == nil {
+		return fmt.Errorf("png: dark and light colors must be non-nil")
+	}
+	if !p.moduleShape.Valid() || !p.frameShape.Valid() || !p.ballShape.Valid() || !p.gradient.Valid() {
+		return fmt.Errorf("png: invalid style option")
+	}
+	if p.gradient != style.GradientNone && (p.gradFrom == nil || p.gradTo == nil || math.IsNaN(p.gradAngle) || math.IsInf(p.gradAngle, 0)) {
+		return fmt.Errorf("png: gradient colors must be non-nil and angle finite")
+	}
+	if p.logo != nil {
+		b := p.logo.Bounds()
+		w, h := b.Dx(), b.Dy()
+		if w < 1 || h < 1 || w > 4096 || h > 4096 || int64(w)*int64(h) > 16_000_000 {
+			return fmt.Errorf("png: logo dimensions exceed 4096 pixels or 16 megapixels")
+		}
+	}
+	return nil
+}
+
 // buildImage renders the code (and optional logo) into an RGBA image.
-func (p PNG) buildImage(g render.Grid) *image.RGBA {
+func (p PNG) buildImage(g render.Grid) (*image.RGBA, error) {
+	if err := p.validate(g); err != nil {
+		return nil, err
+	}
 	size := g.Size()
 	modules := size + 2*p.quiet
 
@@ -192,7 +230,7 @@ func (p PNG) buildImage(g render.Grid) *image.RGBA {
 	logoMods := 0
 	grid := g
 	if p.logo != nil {
-		logoMods = render.ResolveLogo(g, p.logoModules)
+		logoMods = render.ResolveLogoWithWarnings(g, p.logoModules, p.warn)
 		grid = render.MaskLogo(g, logoMods)
 	}
 
@@ -212,7 +250,7 @@ func (p PNG) buildImage(g render.Grid) *image.RGBA {
 		p.drawLogo(img, offX, offY, size, scale, logoMods)
 	}
 
-	return img
+	return img, nil
 }
 
 // drawStyled rasterizes shaped modules and whole-shape finder eyes through
@@ -309,16 +347,16 @@ func lerpColor(a, b color.Color, t float64) color.Color {
 // warnContrast flags styled color choices likely to break scanning.
 func (p PNG) warnContrast() {
 	if p.gradient != style.GradientNone {
-		style.WarnContrast("gradient start color", p.gradFrom, p.white)
-		style.WarnContrast("gradient end color", p.gradTo, p.white)
+		style.WarnContrast(p.warn, "gradient start color", p.gradFrom, p.white)
+		style.WarnContrast(p.warn, "gradient end color", p.gradTo, p.white)
 	} else {
-		style.WarnContrast("module color", p.dark, p.white)
+		style.WarnContrast(p.warn, "module color", p.dark, p.white)
 	}
 	if p.eyeFrame != nil {
-		style.WarnContrast("eye frame color", p.eyeFrame, p.white)
+		style.WarnContrast(p.warn, "eye frame color", p.eyeFrame, p.white)
 	}
 	if p.eyeBall != nil {
-		style.WarnContrast("eye ball color", p.eyeBall, p.white)
+		style.WarnContrast(p.warn, "eye ball color", p.eyeBall, p.white)
 	}
 }
 
@@ -355,7 +393,7 @@ func (p PNG) drawLogo(img *image.RGBA, offX, offY, size, scale, mods int) {
 	// Fit the logo inside its box (by default a span-dependent slice of the
 	// cleared region, so the logo never touches the surrounding modules),
 	// preserving the aspect ratio, centred on the region.
-	box := render.LogoBox(region, mods, p.logoScale)
+	box := render.LogoBoxWithWarnings(region, mods, p.logoScale, p.warn)
 	sb := p.logo.Bounds()
 	sw, sh := sb.Dx(), sb.Dy()
 	tw, th := box, box
@@ -374,14 +412,21 @@ func (p PNG) drawLogo(img *image.RGBA, offX, offY, size, scale, mods int) {
 // Bytes returns the rendered QR as an encoded PNG image.
 func (p PNG) Bytes(g render.Grid) ([]byte, error) {
 	var buf bytes.Buffer
-	if err := png.Encode(&buf, p.buildImage(g)); err != nil {
+	img, err := p.buildImage(g)
+	if err != nil {
+		return nil, err
+	}
+	if err := png.Encode(&buf, img); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
 }
 
 func (p PNG) Render(g render.Grid) error {
-	img := p.buildImage(g)
+	img, err := p.buildImage(g)
+	if err != nil {
+		return err
+	}
 
 	out := p.w
 	if out == nil {

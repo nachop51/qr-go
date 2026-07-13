@@ -46,7 +46,7 @@ func TestVCard(t *testing.T) {
 		"EMAIL:jane@acme.test",
 		"URL:https://acme.test",
 		"END:VCARD",
-	}, "\n")
+	}, "\r\n") + "\r\n"
 
 	if got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
@@ -72,7 +72,7 @@ func TestEventTimed(t *testing.T) {
 		"DTSTART:20260704T090000Z",
 		"DTEND:20260704T103000Z",
 		"END:VEVENT",
-	}, "\n")
+	}, "\r\n") + "\r\n"
 
 	if got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)

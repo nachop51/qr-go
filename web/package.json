@@ -2,9 +2,16 @@
   "name": "qr-go-web",
   "private": true,
   "type": "module",
+  "packageManager": "bun@1.3.9",
   "scripts": {
     "dev": "bun index.html",
     "build": "bun build index.html --outdir dist --minify",
-    "typecheck": "bun x tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src",
+    "smoke": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.55.0",
+    "typescript": "5.9.3"
   }
 }

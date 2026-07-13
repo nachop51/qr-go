@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // WiFiAuth is a Wi-Fi network's authentication type.
@@ -109,7 +110,7 @@ func (v VCard) String() string {
 	}
 
 	lines = append(lines, "END:VCARD")
-	return strings.Join(lines, "\n")
+	return foldContentLines(lines)
 }
 
 // Event encodes a calendar entry as an iCalendar VEVENT. A zero Start or End is
@@ -142,7 +143,7 @@ func (e Event) String() string {
 		lines = append(lines, "DTEND"+icalTime(e.End, e.AllDay))
 	}
 	lines = append(lines, "END:VEVENT")
-	return strings.Join(lines, "\n")
+	return foldContentLines(lines)
 }
 
 // URL returns the address unchanged; a URL QR code is simply the URL text.
@@ -212,5 +213,44 @@ var vcReplacer = strings.NewReplacer(
 	`\`, `\\`,
 	`;`, `\;`,
 	`,`, `\,`,
+	"\r\n", `\n`,
+	"\r", `\n`,
 	"\n", `\n`,
 )
+
+// foldContentLines emits CRLF-terminated vCard/iCalendar lines and folds at
+// 75 UTF-8 octets. Continuation lines begin with one space, which counts
+// toward their 75-octet limit.
+func foldContentLines(lines []string) string {
+	var out strings.Builder
+	for _, line := range lines {
+		first := true
+		for len(line) > 0 {
+			limit := 75
+			if !first {
+				out.WriteByte(' ')
+				limit--
+			}
+			cut := utf8PrefixLen(line, limit)
+			out.WriteString(line[:cut])
+			out.WriteString("\r\n")
+			line = line[cut:]
+			first = false
+		}
+		if first {
+			out.WriteString("\r\n")
+		}
+	}
+	return out.String()
+}
+
+func utf8PrefixLen(s string, maxBytes int) int {
+	if len(s) <= maxBytes {
+		return len(s)
+	}
+	cut := maxBytes
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return cut
+}

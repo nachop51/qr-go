@@ -95,10 +95,10 @@ func TestMaxLogoModules(t *testing.T) {
 		level qr.CorrectionLevel
 		div   int
 	}{
-		{qr.CorrectionLevelHigh, 3},
-		{qr.CorrectionLevelQuartile, 4},
-		{qr.CorrectionLevelMedium, 5},
-		{qr.CorrectionLevelLow, 6},
+		{qr.CorrectionLevelHigh, 4},
+		{qr.CorrectionLevelQuartile, 5},
+		{qr.CorrectionLevelMedium, 6},
+		{qr.CorrectionLevelLow, 7},
 	} {
 		code, err := qr.NewTextBuilder("HELLO WORLD").SetErrorCorrectionLevel(c.level).Build()
 		if err != nil {

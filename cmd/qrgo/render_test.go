@@ -60,10 +60,10 @@ func TestParseHexColor(t *testing.T) {
 	}{
 		{in: "#000000", want: color.RGBA{A: 0xff}},
 		{in: "#ffffff", want: color.RGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}},
-		{in: "ff0000", want: color.RGBA{R: 0xff, A: 0xff}},
+		{in: "ff0000", wantErr: true},
 		{in: "#0f0", want: color.RGBA{G: 0xff, A: 0xff}},
 		{in: "#11223344", want: color.RGBA{R: 0x11, G: 0x22, B: 0x33, A: 0x44}},
-		{in: "red", wantErr: true},
+		{in: "red", want: color.RGBA{R: 0xff, A: 0xff}},
 		{in: "#12345", wantErr: true},
 		{in: "#gggggg", wantErr: true},
 	}

@@ -95,24 +95,23 @@ file named by `Filename` (default `image.png`).
 
 #### Logo overlay
 
-Embed a centered logo with `Logo`. Its span defaults to the largest size the
-code's EC level can afford to lose (see `Code.MaxLogoModules`), and can be
-lowered with `LogoModules`:
+Embed a centered logo with `Logo`. Its default span is a conservative
+recommendation derived from the EC level (see `Code.MaxLogoModules`) and can
+be lowered with `LogoModules`:
 
 ```go
 builder.SetErrorCorrectionLevel(qr.CorrectionLevelHigh). // recommended with a logo
-	SetRenderer(png.New().Logo(myLogo))               // default span: the EC budget
+	SetRenderer(png.New().Logo(myLogo))               // conservative default span
 // or a smaller span:
 png.New().Logo(myLogo).LogoModules(5)
 ```
 
-The logo hides the modules it covers, so error correction has to recover them.
-Rough per-level ceilings: `High` → size/3, `Quartile` → size/4, `Medium` →
-size/5, `Low` → size/6 (see `Code.MaxLogoModules`). A span beyond what the
-code's EC level can recover is **capped** to that maximum so the result still
-scans; the adjustment is reported via `render.Warnf` (which you can silence or
-redirect). The logo itself is inset one module inside the cleared region, so
-it never touches the surrounding modules.
+The logo hides modules, so error correction must recover them. Recommended
+spans are `High` → size/4, `Quartile` → size/5, `Medium` → size/6, `Low` →
+size/7. Explicit spans are capped to that recommendation and reported through
+the renderer-local `WarningHandler`. These are conservative guidelines, not a
+scanability guarantee; test the finished code with the scanners and print
+conditions you support.
 
 The SVG renderer supports the same `Logo` / `LogoModules` API, embedding the
 image as a base64 data URI:
@@ -148,6 +147,11 @@ builder.SetRenderer(svg.New().Writer(f).Module(8).Dark("#111111").Light("#ffffff
 SVG options: `Writer(io.Writer)`, `Module(int)` (module size in px),
 `Quiet(int)`, `Dark(string)`, `Light(string)`, `Logo(image.Image)`,
 `LogoModules(int)`. Defaults to `os.Stdout`.
+
+SVG color options use one strict grammar shared with PNG: CSS named colors,
+`transparent`, 3/4/6/8-digit hex, and comma-form `rgb`/`rgba`/`hsl`/`hsla`.
+CSS variables, URLs, and paint servers are rejected. Colors are canonicalized
+before XML emission.
 
 ### Terminal (default)
 
@@ -224,16 +228,16 @@ Reserved characters are escaped for you.
 
 ## Inspecting the result
 
-`qr.Code` exposes the encoding outcome and the module matrix:
+`qr.Code` exposes an immutable view of the encoding outcome:
 
 ```go
-code.Version              // 1–40
-code.Mask                 // 0–7
-code.ErrorCorrectionLevel // the level used
-code.IsECI                // whether ECI was applied
-code.Segments             // the chosen segmentation
-code.Size()               // modules per side
-code.IsDark(x, y)         // module colour at (x, y)
+code.Version()         // 1–40
+code.Mask()            // 0–7
+code.CorrectionLevel() // the level used
+code.UsesECI()         // whether ECI was applied
+code.Segments()        // a copy of the chosen segmentation
+code.Size()            // modules per side
+code.IsDark(x, y)      // false outside the matrix
 ```
 
 ## Command-line tool
@@ -267,13 +271,24 @@ The output format is inferred from `-o`'s extension (`.png`/`.svg`) or set with
 `-f/--format`; with no `-o` the code goes to stdout.
 
 Render/output flags apply to every command: `-e/--ecc {L,M,Q,H}`,
-`-q/--quiet <modules>`, `--dark`/`--light` colors (hex for PNG, any CSS color for
-SVG), `--size`/`--width`/`--height` (PNG px) and `--scale` (SVG module px),
+`-q/--quiet <modules>`, `--version {0,1..40}`, `--mask {-1,0..7}`,
+`--dark`/`--light` validated CSS colors, `--size`/`--width`/`--height` (PNG px) and `--scale` (SVG module px),
 `--logo <file>` + `--logo-modules` for a centered logo (PNG/SVG),
 `--invert`/`--block` for the terminal, `--no-eci`, and `-i/--info` to print the
-encoding outcome (version, mask, segments) to stdout. Run `qrgo --help` for the
+encoding outcome (version, mask, segments) to stderr. File output is rendered
+to a same-directory temporary file and atomically replaced only after success.
+Run `qrgo --help` for the
 overview, `qrgo help <type>` (e.g. `qrgo help wifi`) for a type's own options,
 and `qrgo completion <shell>` for shell completion.
+Use `qrgo build-version` to print the installed program release; `--version`
+is reserved for forcing the QR symbol version in v0.2.
+
+Renderer limits are: quiet zone 0–256 modules, PNG edges up to 8192 and 64
+megapixels, SVG module size 1–1024, and logos up to 16 MiB encoded, 4096 pixels
+per source edge, and 16 megapixels. The browser caps PNG export at 4096².
+Zone-less CLI event date-times use the machine local timezone; explicit
+RFC3339 offsets remain authoritative. vCard and iCalendar output uses CRLF and
+75-octet UTF-8-safe line folding.
 
 ## Project layout
 

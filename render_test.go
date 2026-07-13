@@ -18,11 +18,8 @@ func TestDefaultRendererIsTerminal(t *testing.T) {
 }
 
 func TestRenderNoRenderer(t *testing.T) {
-	code, err := NewBinaryBuilder([]byte("hi")).SetRenderer(nil).Build()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := code.Render(); !errors.Is(err, ErrNoRenderer) {
-		t.Fatalf("want ErrNoRenderer, got %v", err)
+	_, err := NewBinaryBuilder([]byte("hi")).SetRenderer(nil).Build()
+	if !errors.Is(err, ErrInvalidOptions) {
+		t.Fatalf("want ErrInvalidOptions, got %v", err)
 	}
 }

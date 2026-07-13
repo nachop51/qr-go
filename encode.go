@@ -6,7 +6,7 @@ import (
 )
 
 func addTerminatorAndPadding(bitsData *coding.BitWriter, version int, ec CorrectionLevel) {
-	dataBytes := spec.DataCodewords(version, ec.level)
+	dataBytes := spec.DataCodewords(version, ec.tableIndex())
 	capacityBits := dataBytes * 8
 
 	terminatorBits := min(4, capacityBits-bitsData.BitLen())
@@ -32,11 +32,11 @@ type BlockRecipe struct {
 }
 
 func blockRecipe(version int, ec CorrectionLevel) BlockRecipe {
-	g1, g2 := spec.ECBlocks(version, ec.level)
+	g1, g2 := spec.ECBlocks(version, ec.tableIndex())
 	totalBlocks := g1 + g2
 
-	totalEC := spec.ECCodewords(version, ec.level)
-	totalData := spec.DataCodewords(version, ec.level)
+	totalEC := spec.ECCodewords(version, ec.tableIndex())
+	totalData := spec.DataCodewords(version, ec.tableIndex())
 
 	d1 := totalData / totalBlocks
 	return BlockRecipe{

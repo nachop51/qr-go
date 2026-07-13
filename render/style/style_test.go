@@ -197,15 +197,13 @@ func TestAddEyeBall(t *testing.T) {
 
 func TestWarnContrast(t *testing.T) {
 	var warns []string
-	orig := render.Warnf
-	render.Warnf = func(f string, a ...any) { warns = append(warns, fmt.Sprintf(f, a...)) }
-	defer func() { render.Warnf = orig }()
+	warn := func(f string, a ...any) { warns = append(warns, fmt.Sprintf(f, a...)) }
 
-	WarnContrast("eye frame color", color.Black, color.White)
+	WarnContrast(warn, "eye frame color", color.Black, color.White)
 	if len(warns) != 0 {
 		t.Fatalf("black on white should not warn: %v", warns)
 	}
-	WarnContrast("eye frame color", color.RGBA{240, 240, 200, 255}, color.White)
+	WarnContrast(warn, "eye frame color", color.RGBA{240, 240, 200, 255}, color.White)
 	if len(warns) != 1 || !strings.Contains(warns[0], "eye frame color") {
 		t.Fatalf("pale yellow on white should warn once, got %v", warns)
 	}

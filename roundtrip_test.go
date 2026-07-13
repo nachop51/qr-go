@@ -23,9 +23,9 @@ func TestBinaryRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("version=%d mask=%d size=%d ecLevel=%d", qr.Version, qr.Mask, qr.Size(), qr.ErrorCorrectionLevel.level)
+	t.Logf("version=%d mask=%d size=%d ecLevel=%d", qr.Version(), qr.Mask(), qr.Size(), qr.CorrectionLevel())
 
-	cw := buildCodewords(qr.Segments, qr.Version, qr.ErrorCorrectionLevel, qr.IsECI)
+	cw := buildCodewords(qr.Segments(), qr.Version(), qr.CorrectionLevel(), qr.UsesECI())
 	t.Logf("codewords (%d): % X", len(cw), cw)
 
 	if err := qr.Render(); err != nil {

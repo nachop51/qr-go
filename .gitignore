@@ -6,5 +6,7 @@ coverage.out
 web/qr.wasm
 web/src/vendor/
 web/dist/
+web/test-results/
+web/playwright-report/
 node_modules/
 .wrangler/

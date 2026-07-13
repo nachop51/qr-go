@@ -128,14 +128,14 @@ func detectVersion(segments []Segment, ec CorrectionLevel, isECI bool) (int, err
 			totalBits += seg.payloadBits()
 		}
 
-		totalCapacity := spec.DataCodewords(version, ec.level) * 8
+		totalCapacity := spec.DataCodewords(version, ec.tableIndex()) * 8
 
 		if totalBits <= totalCapacity {
 			return version, nil
 		}
 	}
 
-	return 0, spec.ErrDataTooLong
+	return 0, ErrDataTooLong
 }
 
 // ------------- DP -------------
@@ -311,7 +311,7 @@ func (b *Builder) segmentize() ([]Segment, bool, error) {
 			totalBits += 12
 		}
 
-		if totalBits <= spec.DataCodewords(spec.MaxVersionForRange(vr), b.errorCorrectionLevel.level)*8 {
+		if totalBits <= spec.DataCodewords(spec.MaxVersionForRange(vr), b.errorCorrectionLevel.tableIndex())*8 {
 			return segs, needsECI, nil
 		}
 	}

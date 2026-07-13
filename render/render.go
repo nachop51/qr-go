@@ -3,6 +3,8 @@
 // pulling anything heavy.
 package render
 
+import "fmt"
+
 type Grid interface {
 	Size() int
 	IsDark(x, y int) bool
@@ -14,4 +16,17 @@ type Renderer interface {
 	// Bytes returns the rendered output instead of writing it: UTF-8 text for
 	// terminal, markup for SVG, an encoded image for PNG.
 	Bytes(g Grid) ([]byte, error)
+}
+
+// ValidateGrid rejects nil or pathological grids before renderers iterate or
+// allocate from values supplied by third-party Grid implementations.
+func ValidateGrid(g Grid) error {
+	if g == nil {
+		return fmt.Errorf("render: grid is nil")
+	}
+	n := g.Size()
+	if n < 1 || n > 177 {
+		return fmt.Errorf("render: grid size must be between 1 and 177 (got %d)", n)
+	}
+	return nil
 }

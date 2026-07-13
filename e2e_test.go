@@ -256,12 +256,12 @@ func TestE2E_VersionScaling(t *testing.T) {
 			if err != nil {
 				t.Fatalf("build n=%d: %v", n, err)
 			}
-			seenVersions[code.Version] = true
+			seenVersions[code.Version()] = true
 
 			path := renderPNG(t, code, 8)
 			if got := decodeText(t, path); got != payload {
 				t.Fatalf("version scaling n=%d (v%d) mismatch:\n want %q\n got  %q",
-					n, code.Version, payload, got)
+					n, code.Version(), payload, got)
 			}
 		})
 	}
@@ -316,8 +316,9 @@ func TestSegmentModeDetection(t *testing.T) {
 				t.Fatalf("build: %v", err)
 			}
 
-			got := make([]EncodingMode, len(code.Segments))
-			for i, s := range code.Segments {
+			segments := code.Segments()
+			got := make([]EncodingMode, len(segments))
+			for i, s := range segments {
 				got[i] = s.mode
 			}
 			if len(got) != len(tc.modes) {

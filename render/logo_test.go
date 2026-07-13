@@ -37,12 +37,10 @@ func TestResolveLogoDefaultAndParity(t *testing.T) {
 
 func TestResolveLogoDefaultsToBudget(t *testing.T) {
 	var warns int
-	orig := render.Warnf
-	render.Warnf = func(string, ...any) { warns++ }
-	defer func() { render.Warnf = orig }()
+	warn := func(string, ...any) { warns++ }
 
 	// Unconfigured -> full budget (8), parity-nudged to 7, no cap warning.
-	if got := render.ResolveLogo(budgetGrid{n: 25, budget: 8}, 0); got != 7 {
+	if got := render.ResolveLogoWithWarnings(budgetGrid{n: 25, budget: 8}, 0, warn); got != 7 {
 		t.Errorf("default span = %d, want 7", got)
 	}
 	if warns != 0 {
@@ -85,9 +83,7 @@ func TestMaskLogo(t *testing.T) {
 
 func TestLogoBox(t *testing.T) {
 	var warns int
-	orig := render.Warnf
-	render.Warnf = func(string, ...any) { warns++ }
-	defer func() { render.Warnf = orig }()
+	warn := func(string, ...any) { warns++ }
 
 	for _, c := range []struct {
 		name                string
@@ -104,7 +100,7 @@ func TestLogoBox(t *testing.T) {
 		{"tiny percent still draws", 30, 5, 1, 1, 0},
 	} {
 		warns = 0
-		if got := render.LogoBox(c.region, c.mods, c.scale); got != c.want {
+		if got := render.LogoBoxWithWarnings(c.region, c.mods, c.scale, warn); got != c.want {
 			t.Errorf("%s: LogoBox(%d, %d, %d) = %d, want %d", c.name, c.region, c.mods, c.scale, got, c.want)
 		}
 		if warns != c.wantWarns {
@@ -115,13 +111,11 @@ func TestLogoBox(t *testing.T) {
 
 func TestResolveLogoCaps(t *testing.T) {
 	var warns int
-	orig := render.Warnf
-	render.Warnf = func(string, ...any) { warns++ }
-	defer func() { render.Warnf = orig }()
+	warn := func(string, ...any) { warns++ }
 
 	// budget 4, request 9 -> capped to 4, then parity-nudged to 3, one warning.
 	warns = 0
-	if got := render.ResolveLogo(budgetGrid{n: 25, budget: 4}, 9); got != 3 {
+	if got := render.ResolveLogoWithWarnings(budgetGrid{n: 25, budget: 4}, 9, warn); got != 3 {
 		t.Errorf("capped span = %d, want 3", got)
 	}
 	if warns != 1 {
@@ -130,7 +124,7 @@ func TestResolveLogoCaps(t *testing.T) {
 
 	// Within budget: request 3 <= 4 -> 3, no cap, no warning.
 	warns = 0
-	if got := render.ResolveLogo(budgetGrid{n: 25, budget: 4}, 3); got != 3 {
+	if got := render.ResolveLogoWithWarnings(budgetGrid{n: 25, budget: 4}, 3, warn); got != 3 {
 		t.Errorf("within-budget span = %d, want 3", got)
 	}
 	if warns != 0 {
