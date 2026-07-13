@@ -11,7 +11,7 @@
     "smoke": "playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "1.55.0",
+    "@playwright/test": "1.61.1",
     "typescript": "5.9.3"
   }
 }
