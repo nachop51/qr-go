@@ -48,7 +48,7 @@ jobs:
         run: make web-build
 
       - name: Install Chromium
-        run: cd web && bunx playwright install --with-deps chromium
+        run: cd web && bunx playwright install --with-deps chromium webkit
 
       - name: Browser smoke test of deploy artifact
         run: SMOKE_DIST=1 make web-smoke

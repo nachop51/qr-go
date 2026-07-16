@@ -10,3 +10,6 @@ web/test-results/
 web/playwright-report/
 node_modules/
 .wrangler/
+!favicon-64.png
+!apple-touch-icon.png
+.playwright-mcp/
