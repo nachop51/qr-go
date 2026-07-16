@@ -9,7 +9,7 @@ func addTerminatorAndPadding(bitsData *coding.BitWriter, version int, ec Correct
 	dataBytes := spec.DataCodewords(version, ec.tableIndex())
 	capacityBits := dataBytes * 8
 
-	terminatorBits := min(4, capacityBits-bitsData.BitLen())
+	terminatorBits := max(0, min(4, capacityBits-bitsData.BitLen()))
 
 	bitsData.AppendBits(0, terminatorBits)
 	// Bit align
@@ -48,9 +48,8 @@ func blockRecipe(version int, ec CorrectionLevel) BlockRecipe {
 	}
 }
 
-func splitIntoBlocks(data []byte, version int, ec CorrectionLevel) [][]byte {
-	recipe := blockRecipe(version, ec)
-	blocks := [][]byte{}
+func splitIntoBlocks(data []byte, recipe BlockRecipe) [][]byte {
+	blocks := make([][]byte, 0, recipe.Group1Blocks+recipe.Group2Blocks)
 	offset := 0
 
 	for i := 0; i < recipe.Group1Blocks; i++ {
@@ -65,8 +64,7 @@ func splitIntoBlocks(data []byte, version int, ec CorrectionLevel) [][]byte {
 	return blocks
 }
 
-func errorCorrectionPerBlock(blocks [][]byte, version int, ec CorrectionLevel) [][]byte {
-	recipe := blockRecipe(version, ec)
+func errorCorrectionPerBlock(blocks [][]byte, recipe BlockRecipe) [][]byte {
 	enc := coding.NewRSEncoder(recipe.EcPerBlock)
 
 	ecs := make([][]byte, len(blocks))
@@ -95,38 +93,38 @@ func buildCodewords(segments []Segment, version int, ec CorrectionLevel, isECI b
 
 	addTerminatorAndPadding(&bitsData, version, ec)
 
-	blocks := splitIntoBlocks(bitsData.Data(), version, ec)
-	ecs := errorCorrectionPerBlock(blocks, version, ec)
+	recipe := blockRecipe(version, ec)
+	blocks := splitIntoBlocks(bitsData.Data(), recipe)
+	ecs := errorCorrectionPerBlock(blocks, recipe)
 
 	return coding.Interleave(blocks, ecs)
 }
 
 func encodeFormat(d uint16) uint16 {
-	const g = 0x537 // 10100110111, generador grado 10
+	const g = 0x537 // 10100110111, degree-10 BCH generator
 
 	v := d << 10
-	// limpio los 5 bits de datos, posiciones 14..10
+	// Clear the 5 data bits (positions 14..10), leaving only the remainder
+	// in the low 10 bits.
 	for i := 14; i >= 10; i-- {
 		if (v>>uint(i))&1 == 1 {
 			v ^= g << uint(i-10)
 		}
 	}
-	// ahora v tiene solo el resto (10 bits bajos)
 	code := (d << 10) | v
 	return code ^ 0x5412
 }
 
 func encodeVersion(version uint16) uint32 {
-	const g = 0x1F25 // generador BCH(18,6), grado 12
+	const g = 0x1F25 // BCH(18,6) generator, degree 12
 
-	v := uint32(version) << 12 // dejar lugar para 12 bits de EC
-	// limpiar los 6 bits de datos, posiciones 17..12
+	v := uint32(version) << 12 // make room for the 12 EC bits
+	// Clear the 6 data bits (positions 17..12), leaving the remainder in the
+	// low 12 bits. Version info has no final XOR mask.
 	for i := 17; i >= 12; i-- {
 		if (v>>uint(i))&1 == 1 {
 			v ^= g << uint(i-12)
 		}
 	}
-	// ahora v tiene el resto en los 12 bits bajos
 	return (uint32(version) << 12) | v
-	// sin XOR final
 }

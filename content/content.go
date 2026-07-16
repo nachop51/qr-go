@@ -169,6 +169,7 @@ func Geo(lat, lng float64) string {
 
 // Email encodes a mailto: link with an optional pre-filled subject and body.
 func Email(to, subject, body string) string {
+	to = mailtoEscape(to)
 	if subject == "" && body == "" {
 		return "mailto:" + to
 	}
@@ -183,6 +184,27 @@ func Email(to, subject, body string) string {
 	q := strings.ReplaceAll(vals.Encode(), "+", "%20")
 	return "mailto:" + to + "?" + q
 }
+
+// mailtoEscape percent-encodes the characters that would terminate or corrupt
+// the recipient part of a mailto: URI. '@' and the RFC 6068 multi-recipient
+// separator ',' stay literal.
+func mailtoEscape(s string) string {
+	return mailtoReplacer.Replace(s)
+}
+
+var mailtoReplacer = strings.NewReplacer(
+	"%", "%25",
+	" ", "%20",
+	"?", "%3F",
+	"#", "%23",
+	"&", "%26",
+	"\r", "%0D",
+	"\n", "%0A",
+	"\t", "%09",
+	`"`, "%22",
+	"<", "%3C",
+	">", "%3E",
+)
 
 func icalTime(t time.Time, allDay bool) string {
 	if allDay {
@@ -251,6 +273,12 @@ func utf8PrefixLen(s string, maxBytes int) int {
 	cut := maxBytes
 	for cut > 0 && !utf8.RuneStart(s[cut]) {
 		cut--
+	}
+	if cut == 0 {
+		// Invalid UTF-8: a run of continuation bytes longer than the limit has
+		// no rune boundary to back up to. Hard-cut at the byte limit so the
+		// caller always makes progress instead of looping forever.
+		return maxBytes
 	}
 	return cut
 }

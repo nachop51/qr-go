@@ -8,6 +8,7 @@ import {
 } from "./qrgo";
 import { CONTENT_TYPES, FIELDS, type Field, type Values } from "./forms";
 import { createSwatchPicker } from "./colorpicker";
+import { MAX_LOGO_BYTES } from "./validation";
 
 // --- pixel wordmark ---------------------------------------------------------
 // 5x7 bitmap glyphs rendered as SVG modules; the separator is a mini finder
@@ -288,6 +289,8 @@ function buildForm(focusField = false): void {
             f.kind as string
           ] ?? f.kind;
         if (f.step) inp.step = f.step;
+        if (f.min) inp.min = f.min;
+        if (f.max) inp.max = f.max;
         input = inp;
       }
     }
@@ -353,7 +356,7 @@ function options(format: "png" | "svg"): GenerateOptions {
 }
 
 function showEmpty(message: string, isProblem = false): void {
-	clearPreviewURL();
+  clearPreviewURL();
   previewEl.removeAttribute("role");
   previewEl.removeAttribute("aria-label");
   previewEl.innerHTML = "";
@@ -455,7 +458,8 @@ function render(): void {
 // resolution is pure overhead: every regeneration would decode it in wasm and
 // the SVG renderer would embed it as a data URI. Shrink it once, up front.
 async function downscaleLogo(file: File, maxDim = 512): Promise<Uint8Array> {
-	if (file.size > 16 * 1024 * 1024) throw new Error("Logo input must be 16 MiB or smaller");
+  if (file.size > MAX_LOGO_BYTES)
+    throw new Error(`Logo input must be ${MAX_LOGO_BYTES / 1024 / 1024} MiB or smaller`);
   // SVG bytes are already tiny and Go rasterizes them at its own target size;
   // pushing one through canvas would just bake it into a PNG.
   if (file.type === "image/svg+xml") {
@@ -493,7 +497,9 @@ function download(blob: Blob, filename: string): void {
   a.href = URL.createObjectURL(blob);
   a.download = filename;
   a.click();
-  URL.revokeObjectURL(a.href);
+  // Revoking synchronously can cut off large blobs before the browser latches
+  // onto the URL; give the download a tick to start first.
+  setTimeout(() => URL.revokeObjectURL(a.href), 0);
 }
 
 function slug(): string {

@@ -1,8 +1,9 @@
 package qr
 
 import (
-	"github.com/nachop51/qr-go/internal/matrix"
 	"math"
+
+	"github.com/nachop51/qr-go/internal/matrix"
 )
 
 func maskCondition(mask, x, y int) bool {
@@ -102,52 +103,40 @@ func maskPenalty2(m *matrix.Matrix) int {
 	return score
 }
 
-// TODO: Redo this function, I don't understand it properly
 func maskPenalty3(m *matrix.Matrix) int {
-	penalty := 0
-
-	bit := func(x, y int) bool {
+	size := m.Size()
+	dark := func(x, y int) bool {
 		return m.Get(x, y) == matrix.Black
 	}
 
-	// Patrón 1:1:3:1:1 = oscuro,claro,oscuro x3,claro,oscuro (7 módulos)
-	// Más 4 módulos claros de un lado (no de los dos a la vez)
 	check := func(get func(k int) bool) int {
+		lightRun := func(from, to int) bool {
+			if from < 0 || to > size {
+				return false
+			}
+			for k := from; k < to; k++ {
+				if get(k) {
+					return false
+				}
+			}
+			return true
+		}
 		p := 0
-		for i := 0; i <= m.Size()-7; i++ {
-			// Buscar el patrón finder 7 en (i..i+6): D L DDD L D
-			if get(i) && !get(i+1) && get(i+2) && get(i+3) && get(i+4) && !get(i+5) && get(i+6) {
-				// Verificar 4 claros antes (i-4..i-1) o después (i+7..i+10)
-				before := true
-				for k := 1; k <= 4; k++ {
-					if i-k < 0 || get(i-k) {
-						before = false
-						break
-					}
-				}
-				after := true
-				for k := range 4 {
-					if i+7+k >= m.Size() || get(i+7+k) {
-						after = false
-						break
-					}
-				}
-				if before {
-					p += 40
-				}
-				if after {
-					p += 40
-				}
+		for i := 0; i+6 < size; i++ {
+			if get(i) && !get(i+1) && get(i+2) && get(i+3) && get(i+4) && !get(i+5) && get(i+6) &&
+				(lightRun(i-4, i) || lightRun(i+7, i+11)) {
+				p += 40
 			}
 		}
 		return p
 	}
 
-	for y := range m.Size() {
-		penalty += check(func(x int) bool { return bit(x, y) })
+	penalty := 0
+	for y := range size {
+		penalty += check(func(x int) bool { return dark(x, y) })
 	}
-	for x := range m.Size() {
-		penalty += check(func(y int) bool { return bit(x, y) })
+	for x := range size {
+		penalty += check(func(y int) bool { return dark(x, y) })
 	}
 	return penalty
 }

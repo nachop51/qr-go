@@ -2,9 +2,9 @@
 // qr-go library. Every content helper, error-correction level, and renderer
 // through a single flat command:
 //
-//	qrgo "HELLO WORLD"                       # QR to the terminal
-//	qrgo -t url https://example.com -o q.png # PNG file
-//	qrgo -t wifi --ssid home --pass s3cr3t   # Wi-Fi join code
+//	qrgo "HELLO WORLD"                      # QR to the terminal
+//	qrgo url https://example.com -o q.png   # PNG file
+//	qrgo wifi --ssid home --pass s3cr3t     # Wi-Fi join code
 //
 // Run "qrgo --help" for the full flag reference.
 package main

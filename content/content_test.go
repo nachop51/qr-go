@@ -122,6 +122,34 @@ func TestEmailWithSubjectAndBody(t *testing.T) {
 	}
 }
 
+func TestEmailEscapesRecipient(t *testing.T) {
+	cases := map[string]string{
+		Email("bad guy?#\n@b.test", "", ""): "mailto:bad%20guy%3F%23%0A@b.test",
+		Email("a@b.test,c@d.test", "", ""):  "mailto:a@b.test,c@d.test",
+		Email("plus+tag@b.test", "", ""):    "mailto:plus+tag@b.test",
+		Email("a@b.test?x=1", "s", ""):      "mailto:a@b.test%3Fx=1?subject=s",
+	}
+	for got, want := range cases {
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	}
+}
+
+// Invalid UTF-8 (a run of continuation bytes longer than the fold limit) must
+// still terminate: utf8PrefixLen hard-cuts when no rune boundary exists.
+func TestFoldInvalidUTF8Terminates(t *testing.T) {
+	out := VCard{FullName: strings.Repeat("\x80", 200)}.String()
+	if !strings.HasSuffix(out, "END:VCARD\r\n") {
+		t.Fatalf("unexpected tail: %q", out[max(0, len(out)-20):])
+	}
+	for _, line := range strings.Split(strings.TrimSuffix(out, "\r\n"), "\r\n") {
+		if len(line) > 75 {
+			t.Errorf("folded line is %d octets", len(line))
+		}
+	}
+}
+
 // The payloads must actually encode through the QR pipeline without error.
 func TestHelpersEncode(t *testing.T) {
 	payloads := []string{

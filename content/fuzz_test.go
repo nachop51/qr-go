@@ -6,7 +6,7 @@ import (
 )
 
 func FuzzContentEscapingAndFolding(f *testing.F) {
-	for _, seed := range []string{"plain", "line1\r\nline2", strings.Repeat("é", 80), `a;b,c\\d`} {
+	for _, seed := range []string{"plain", "line1\r\nline2", strings.Repeat("é", 80), `a;b,c\\d`, "\xc3" + strings.Repeat("\x80", 80)} {
 		f.Add(seed)
 	}
 	f.Fuzz(func(t *testing.T, s string) {

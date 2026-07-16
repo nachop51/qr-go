@@ -51,6 +51,43 @@ func TestBuildPayload(t *testing.T) {
 			wantText: content.Tel("+15551234567"),
 		},
 		{
+			name:     "sms number from stdin",
+			typ:      "sms",
+			opts:     options{message: "later"},
+			stdin:    []byte("+15551234567\n"),
+			wantText: content.SMS("+15551234567", "later"),
+		},
+		{
+			name:     "wifi ssid from stdin",
+			typ:      "wifi",
+			stdin:    []byte("CoffeeShop\n"),
+			wantText: content.WiFi{SSID: "CoffeeShop"}.String(),
+		},
+		{
+			name:     "vcard full name from stdin",
+			typ:      "vcard",
+			stdin:    []byte("Jane Doe\n"),
+			wantText: content.VCard{FullName: "Jane Doe"}.String(),
+		},
+		{
+			name:     "event summary from stdin",
+			typ:      "event",
+			stdin:    []byte("Launch\n"),
+			wantText: content.Event{Summary: "Launch"}.String(),
+		},
+		{
+			name:     "geo coordinates from stdin",
+			typ:      "geo",
+			stdin:    []byte("48.8584, 2.2945\n"),
+			wantText: content.Geo(48.8584, 2.2945),
+		},
+		{
+			name:    "geo stdin out of range",
+			typ:     "geo",
+			stdin:   []byte("999 2.2945\n"),
+			wantErr: true,
+		},
+		{
 			name:     "sms number and positional message",
 			typ:      "sms",
 			args:     []string{"+15551234567", "call", "me"},

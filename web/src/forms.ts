@@ -2,6 +2,8 @@
 // form's values become the string payload (via the Go content helpers, so the
 // escaping rules live in exactly one place).
 
+import { coordinatesAreValid } from "./validation";
+
 export interface Field {
   key: string;
   label: string;
@@ -9,6 +11,8 @@ export interface Field {
   placeholder?: string;
   options?: [value: string, label: string][];
   step?: string;
+  min?: string;
+  max?: string;
 }
 
 export type Values = Record<string, string>;
@@ -62,8 +66,8 @@ export const FIELDS: Record<string, Field[]> = {
     { key: "message", label: "Message", kind: "textarea", placeholder: "Pre-filled text" },
   ],
   geo: [
-    { key: "lat", label: "Latitude", kind: "number", step: "any", placeholder: "-34.9011" },
-    { key: "lng", label: "Longitude", kind: "number", step: "any", placeholder: "-56.1645" },
+    { key: "lat", label: "Latitude", kind: "number", step: "any", min: "-90", max: "90", placeholder: "-34.9011" },
+    { key: "lng", label: "Longitude", kind: "number", step: "any", min: "-180", max: "180", placeholder: "-56.1645" },
   ],
   email: [
     { key: "to", label: "To", kind: "email", placeholder: "someone@example.com" },
@@ -113,6 +117,9 @@ export const CONTENT_TYPES: ContentType[] = [
       const lat = parseFloat(v.lat ?? "");
       const lng = parseFloat(v.lng ?? "");
       if (Number.isNaN(lat) || Number.isNaN(lng)) return "";
+      if (!coordinatesAreValid(lat, lng)) {
+        return { error: "Latitude must be within -90..90 and longitude within -180..180" };
+      }
       return qrgo.content.geo({ lat, lng });
     },
   },

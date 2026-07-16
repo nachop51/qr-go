@@ -279,6 +279,9 @@ func (o *options) encode(cmd *cobra.Command, typ string, args []string, stdin []
 	if o.logoModules < 0 {
 		return fmt.Errorf("--logo-modules must be non-negative")
 	}
+	if o.logoScale < 0 {
+		return fmt.Errorf("--logo-scale must be non-negative")
+	}
 
 	// Build and render fully before touching the destination. This keeps an
 	// existing output byte-for-byte intact on every validation/render failure.

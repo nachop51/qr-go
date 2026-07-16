@@ -8,6 +8,7 @@
 package terminal
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -62,20 +63,45 @@ func (t Terminal) Light(s string) Terminal { t.light = s; t.half = false; return
 func (t Terminal) Invert() Terminal { t.invert = true; return t }
 
 func (t Terminal) Render(g render.Grid) error {
-	_, err := io.WriteString(t.w, t.text(g))
+	w := t.w
+	if w == nil {
+		w = os.Stdout
+	}
+
+	text, err := t.text(g)
+	if err != nil {
+		return err
+	}
+	_, err = io.WriteString(w, text)
 	return err
 }
 
 // Bytes returns the rendered QR as UTF-8 text.
 func (t Terminal) Bytes(g render.Grid) ([]byte, error) {
-	return []byte(t.text(g)), nil
+	text, err := t.text(g)
+	return []byte(text), err
 }
 
-func (t Terminal) text(g render.Grid) string {
-	if t.half {
-		return t.renderHalf(g)
+// validate rejects bad inputs before rendering iterates over them, mirroring
+// the SVG and PNG renderers.
+func (t Terminal) validate(g render.Grid) error {
+	if err := render.ValidateGrid(g); err != nil {
+		return err
 	}
-	return t.renderBlock(g)
+	if t.quiet < 0 || t.quiet > 256 {
+		return fmt.Errorf("terminal: quiet zone must be between 0 and 256")
+	}
+	return nil
+}
+
+func (t Terminal) text(g render.Grid) (string, error) {
+	if err := t.validate(g); err != nil {
+		return "", err
+	}
+	if t.half {
+		return t.renderHalf(g), nil
+	}
+	return t.renderBlock(g), nil
 }
 
 // ink reports whether a character cell at padded coordinate (x, y) should be

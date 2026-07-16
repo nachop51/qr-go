@@ -49,6 +49,9 @@ func buildPayload(o *options, typ string, args []string, stdin []byte) (text str
 	case "sms":
 		number := firstArg(args)
 		if number == "" {
+			number = stdinString(stdin)
+		}
+		if number == "" {
 			return "", nil, false, errNoContent("sms")
 		}
 		message := o.message
@@ -69,6 +72,12 @@ func buildPayload(o *options, typ string, args []string, stdin []byte) (text str
 
 	case "geo":
 		lat, lng := o.lat, o.lng
+		if len(args) == 0 && stdin != nil {
+			// Accept "lat lng" or "lat,lng" on stdin.
+			args = strings.FieldsFunc(stdinString(stdin), func(r rune) bool {
+				return r == ' ' || r == ',' || r == '\t'
+			})
+		}
 		if len(args) >= 2 {
 			if lat, err = strconv.ParseFloat(args[0], 64); err != nil {
 				return "", nil, false, fmt.Errorf("geo: latitude %q is not a number", args[0])
@@ -90,6 +99,9 @@ func buildPayload(o *options, typ string, args []string, stdin []byte) (text str
 		ssid := o.ssid
 		if ssid == "" {
 			ssid = firstArg(args)
+		}
+		if ssid == "" {
+			ssid = stdinString(stdin)
 		}
 		if ssid == "" {
 			return "", nil, false, usageError{"wifi: an SSID is required (--ssid or a positional argument)"}
@@ -120,6 +132,9 @@ func buildPayload(o *options, typ string, args []string, stdin []byte) (text str
 			v.FullName = firstArg(args)
 		}
 		if v == (content.VCard{}) {
+			v.FullName = stdinString(stdin)
+		}
+		if v == (content.VCard{}) {
 			return "", nil, false, usageError{"vcard: provide at least a name or one field (--name, --email, --phone, ...)"}
 		}
 		return v.String(), nil, false, nil
@@ -133,6 +148,9 @@ func buildPayload(o *options, typ string, args []string, stdin []byte) (text str
 		var startDate, endDate bool
 		if e.Summary == "" {
 			e.Summary = firstArg(args)
+		}
+		if e.Summary == "" {
+			e.Summary = stdinString(stdin)
 		}
 		if o.start != "" {
 			t, dateOnly, err := parseEventTime(o.start)

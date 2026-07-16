@@ -117,6 +117,62 @@ func TestStyledPNGRoundTrip(t *testing.T) {
 	}
 }
 
+// Every module shape x eye frame shape x eye ball shape combination must
+// survive a decode round-trip, at Quartile as well as High error correction.
+// The full cross-product runs through the PNG renderer; SVG stays with the
+// representative combos above (rasterizing markup per combo is much slower).
+func TestStyledPNGShapeSweep(t *testing.T) {
+	const want = "https://example.com/styled-shape-sweep"
+
+	moduleShapes := []style.ModuleShape{style.ModuleSquare, style.ModuleRounded, style.ModuleDot}
+	eyeShapes := []style.EyeShape{style.EyeSquare, style.EyeRounded, style.EyeCircle}
+	levels := map[string]CorrectionLevel{
+		"quartile": CorrectionLevelQuartile,
+		"high":     CorrectionLevelHigh,
+	}
+
+	for levelName, level := range levels {
+		for _, mod := range moduleShapes {
+			for _, frame := range eyeShapes {
+				for _, ball := range eyeShapes {
+					name := levelName + "/" + mod.String() + "-" + frame.String() + "-" + ball.String()
+					t.Run(name, func(t *testing.T) {
+						var buf bytes.Buffer
+						renderer := png.New().
+							Writer(&buf).
+							ModuleShape(mod).
+							EyeFrameShape(frame).
+							EyeBallShape(ball)
+						code, err := NewTextBuilder(want).
+							SetRenderer(renderer).
+							SetErrorCorrectionLevel(level).
+							Build()
+						if err != nil {
+							t.Fatal(err)
+						}
+						if err := code.Render(); err != nil {
+							t.Fatal(err)
+						}
+
+						img, _, err := image.Decode(&buf)
+						if err != nil {
+							t.Fatal(err)
+						}
+						bmp, _ := gozxing.NewBinaryBitmapFromImage(img)
+						res, err := qrcode.NewQRCodeReader().Decode(bmp, nil)
+						if err != nil {
+							t.Fatalf("decode failed: %v", err)
+						}
+						if res.GetText() != want {
+							t.Fatalf("decoded %q, want %q", res.GetText(), want)
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
 func rasterizeMarkup(t *testing.T, markup []byte) image.Image {
 	t.Helper()
 	icon, err := oksvg.ReadIconStream(bytes.NewReader(markup))

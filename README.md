@@ -13,6 +13,9 @@ import qr "github.com/nachop51/qr-go"
 go get github.com/nachop51/qr-go
 ```
 
+Upgrading from v0.1? See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the v0.2
+breaking changes and migration table.
+
 ## Features
 
 - Build QR codes from:

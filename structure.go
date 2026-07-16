@@ -85,7 +85,7 @@ func reserveMetadata(m *matrix.Matrix, version int) {
 	}
 }
 
-func placeData(m *matrix.Matrix, data []byte) {
+func placeData(m *matrix.Matrix, data []byte) error {
 	r := coding.NewBitReader(data)
 
 	upward := true
@@ -115,8 +115,9 @@ func placeData(m *matrix.Matrix, data []byte) {
 	}
 
 	if r.Pos() != len(r.Data())*8 {
-		panic(fmt.Sprintf("data does not fit in QR code: pos=%d, len=%d", r.Pos(), len(r.Data())*8))
+		return fmt.Errorf("qr: internal error: data does not fit in QR code: pos=%d, len=%d", r.Pos(), len(r.Data())*8)
 	}
+	return nil
 }
 
 func bitOf(f uint32, i int) int {

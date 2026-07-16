@@ -3,7 +3,6 @@ package qr
 import (
 	"github.com/nachop51/qr-go/internal/coding"
 	"github.com/nachop51/qr-go/internal/spec"
-	"strings"
 	"unicode/utf8"
 
 	"golang.org/x/text/encoding/japanese"
@@ -33,6 +32,9 @@ func (s *Segment) payloadBits() int {
 	}
 }
 
+// dataLength reports the character count for the count indicator. Kanji
+// segments only ever hold runes that passed isKanjiRune during segmentation,
+// so the ShiftJIS re-encode here cannot fail.
 func (s *Segment) dataLength() int {
 	if s.mode == EncodingModeKanji {
 		sjis, _, _ := transform.String(japanese.ShiftJIS.NewEncoder(), string(s.data))
@@ -160,7 +162,7 @@ func charCost(r rune, mode EncodingMode) int {
 			return 20
 		}
 	case EncodingModeAlphanumeric:
-		if strings.ContainsRune(spec.ALPHA_NUMERIC_CHARSET, r) {
+		if r < 128 && spec.CharValue(byte(r)) >= 0 {
 			return 33
 		}
 		return costImpossible
@@ -180,20 +182,44 @@ func headerCost(mode EncodingMode, vr spec.VersionRange) int {
 	return (4 + spec.CharCountBits(mode, vr)) * 6
 }
 
-func segmentizeOptimal(data []byte, vr spec.VersionRange) ([]Segment, int) {
+var dpModes = []EncodingMode{
+	EncodingModeNumeric,
+	EncodingModeAlphanumeric,
+	EncodingModeByte,
+	EncodingModeKanji,
+}
+
+// runeModeCosts caches the decoded runes and each rune's per-mode character
+// cost (in sixth-bits). The costs are version-independent, so segmentize
+// computes them once and reuses them across every version range instead of
+// re-running the ShiftJIS probe per range.
+type runeModeCosts struct {
+	runes []rune
+	costs [][]int // [rune index][dpModes index]
+}
+
+func computeRuneCosts(data []byte) runeModeCosts {
 	runes := []rune(string(data))
+	costs := make([][]int, len(runes))
+	for i, r := range runes {
+		row := make([]int, len(dpModes))
+		for j, m := range dpModes {
+			row[j] = charCost(r, m)
+		}
+		costs[i] = row
+	}
+	return runeModeCosts{runes: runes, costs: costs}
+}
+
+func segmentizeOptimal(rc runeModeCosts, vr spec.VersionRange) ([]Segment, int) {
+	runes := rc.runes
 	n := len(runes)
 
 	if n == 0 {
 		return nil, 0
 	}
 
-	modes := []EncodingMode{
-		EncodingModeNumeric,
-		EncodingModeAlphanumeric,
-		EncodingModeByte,
-		EncodingModeKanji,
-	}
+	modes := dpModes
 
 	cost := make([][]int, n+1)
 	from := make([][]EncodingMode, n+1)
@@ -212,10 +238,8 @@ func segmentizeOptimal(data []byte, vr spec.VersionRange) ([]Segment, int) {
 	}
 
 	for i := 1; i <= n; i++ {
-		r := runes[i-1]
-
 		for modeIdx, m := range modes {
-			cc := charCost(r, m)
+			cc := rc.costs[i-1][modeIdx]
 			if cc == costImpossible {
 				continue
 			}
@@ -302,8 +326,9 @@ func indexOfMode(modes []EncodingMode, m EncodingMode) int {
 
 func (b *Builder) segmentize() ([]Segment, bool, error) {
 	ranges := []spec.VersionRange{spec.VersionRangeSmall, spec.VersionRangeMedium, spec.VersionRangeLarge}
+	rc := computeRuneCosts(b.data)
 	for _, vr := range ranges {
-		segs, sixths := segmentizeOptimal(b.data, vr)
+		segs, sixths := segmentizeOptimal(rc, vr)
 		totalBits := (sixths + 5) / 6 // costs are in sixth-bits; ceil to bits
 
 		needsECI := b.textECIPolicy != TextECIPolicyDisabled && segmentsNeedsECI(segs)

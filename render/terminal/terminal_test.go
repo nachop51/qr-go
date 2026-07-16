@@ -123,6 +123,22 @@ func TestTerminal_renderBlock(t *testing.T) {
 // Compile-time check: Terminal satisfies the full renderer contract.
 var _ render.Renderer = New()
 
+// Parity with SVG/PNG: a nil grid is an error, not a panic, and the quiet
+// zone must stay within [0, 256].
+func TestTerminalRejectsInvalidInputs(t *testing.T) {
+	if err := New().Writer(&bytes.Buffer{}).Render(nil); err == nil {
+		t.Error("Render(nil): expected error")
+	}
+	if _, err := New().Bytes(nil); err == nil {
+		t.Error("Bytes(nil): expected error")
+	}
+	for _, cfg := range []Terminal{New().Quiet(-1), New().Quiet(257)} {
+		if _, err := cfg.Bytes(fakeGrid{n: 3}); err == nil {
+			t.Error("expected quiet zone range error")
+		}
+	}
+}
+
 // Bytes returns exactly what Render writes, in every style.
 func TestTerminalBytesMatchesRender(t *testing.T) {
 	g := fakeGrid{n: 3}

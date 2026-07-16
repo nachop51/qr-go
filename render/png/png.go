@@ -161,11 +161,7 @@ func (p PNG) styled() bool {
 }
 
 func (p PNG) drawModule(img *image.RGBA, px, py, scale int) {
-	for i := range scale {
-		for j := range scale {
-			img.Set(px+i, py+j, p.dark)
-		}
-	}
+	draw.Draw(img, image.Rect(px, py, px+scale, py+scale), &image.Uniform{C: p.dark}, image.Point{}, draw.Src)
 }
 
 func (p PNG) drawQuiet(img *image.RGBA) {
@@ -315,7 +311,7 @@ func (p PNG) moduleSource(b image.Rectangle) any {
 		reach := math.Hypot(cx, cy) // corners land exactly on the end stop
 		return rasterx.ColorFunc(func(x, y int) color.Color {
 			t := math.Hypot(float64(x)-cx, float64(y)-cy) / reach
-			return lerpColor(p.gradFrom, p.gradTo, t)
+			return lerpColor(p.gradFrom, p.gradTo, min(max(t, 0), 1))
 		})
 	}
 	rad := p.gradAngle * math.Pi / 180
@@ -438,8 +434,12 @@ func (p PNG) Render(g render.Grid) error {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
-		out = f
+		if err := png.Encode(f, img); err != nil {
+			_ = f.Close() // the encode error is the one worth reporting
+			return err
+		}
+		// A failed Close on a write path can mean lost data; report it.
+		return f.Close()
 	}
 
 	return png.Encode(out, img)

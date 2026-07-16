@@ -133,6 +133,21 @@ func TestDecodeLimitsAndPathologicalSVG(t *testing.T) {
 	}
 }
 
+// An SVG small in bytes but dense in elements must be rejected before it
+// reaches oksvg, where each element costs CPU to parse and rasterize.
+func TestDecodeSVGTooManyElements(t *testing.T) {
+	var sb bytes.Buffer
+	sb.WriteString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">`)
+	for range MaxSVGElements {
+		sb.WriteString(`<rect/>`)
+	}
+	sb.WriteString(`</svg>`)
+
+	if _, err := DecodeBytes(sb.Bytes()); err == nil {
+		t.Fatal("expected element-dense SVG to be rejected")
+	}
+}
+
 func TestDecodeGarbage(t *testing.T) {
 	if _, err := DecodeBytes([]byte("not an image at all")); err == nil {
 		t.Error("expected an error decoding non-image bytes")

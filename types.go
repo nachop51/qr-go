@@ -98,6 +98,6 @@ func (s Segment) Mode() string {
 	case EncodingModeKanji:
 		return "Kanji"
 	default:
-		return "Numeric"
+		return "Unknown"
 	}
 }

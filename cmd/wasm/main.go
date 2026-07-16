@@ -123,13 +123,24 @@ func eciPolicy(v js.Value) (qr.TextECIPolicy, error) {
 	}
 }
 
-// parseHex parses #rgb and #rrggbb colors.
+// parseHex validates a CSS color (named, transparent, #hex, rgb()/hsl()
+// forms via render.ParseCSSColor) and returns its raster form for the PNG
+// renderer.
 func parseHex(s string) (color.Color, error) {
 	c, err := render.ParseCSSColor(s)
 	if err != nil {
 		return nil, err
 	}
 	return c.RGBA, nil
+}
+
+// validCSS checks a color against the same grammar as parseHex so the SVG
+// branch rejects bad colors up front with the same error messages as PNG,
+// while the raw string still flows to the renderer (which re-validates and
+// canonicalizes it).
+func validCSS(s string) error {
+	_, err := render.ParseCSSColor(s)
+	return err
 }
 
 // styleSpec carries the parsed style options; colors stay raw strings so the
@@ -314,9 +325,15 @@ func generate(opts js.Value) any {
 	case "svg":
 		r := svg.New().WarningHandler(warn)
 		if c := str(opts, "dark", ""); c != "" {
+			if err := validCSS(c); err != nil {
+				return errResult("%v", err)
+			}
 			r = r.Dark(c)
 		}
 		if c := str(opts, "light", ""); c != "" {
+			if err := validCSS(c); err != nil {
+				return errResult("%v", err)
+			}
 			r = r.Light(c)
 		}
 		if quiet >= 0 {
@@ -332,8 +349,26 @@ func generate(opts js.Value) any {
 		if logo != nil {
 			r = r.Logo(logo).LogoModules(logoModules).LogoScale(num(opts, "logoScale", 0))
 		}
+		if st.eyeFrame != "" {
+			if err := validCSS(st.eyeFrame); err != nil {
+				return errResult("eyeFrame: %v", err)
+			}
+		}
+		if st.eyeBall != "" {
+			if err := validCSS(st.eyeBall); err != nil {
+				return errResult("eyeBall: %v", err)
+			}
+		}
 		r = r.ModuleShape(st.module).EyeFrameShape(st.frame).EyeBallShape(st.ball).
 			EyeFrame(st.eyeFrame).EyeBall(st.eyeBall)
+		if st.gradKind != style.GradientNone {
+			if err := validCSS(st.gradFrom); err != nil {
+				return errResult("gradient: %v", err)
+			}
+			if err := validCSS(st.gradTo); err != nil {
+				return errResult("gradient: %v", err)
+			}
+		}
 		if st.gradKind == style.GradientRadial {
 			r = r.GradientRadial(st.gradFrom, st.gradTo)
 		} else if st.gradKind == style.GradientLinear {
@@ -382,6 +417,9 @@ func generate(opts js.Value) any {
 	}
 }
 
+// datetimeLocalRE matches an HTML datetime-local value (no timezone suffix).
+var datetimeLocalRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$`)
+
 func parseEventTime(s string) (time.Time, bool, error) {
 	if s == "" {
 		return time.Time{}, false, nil
@@ -393,7 +431,7 @@ func parseEventTime(s string) (time.Time, bool, error) {
 		return t, false, nil
 	}
 	// Date parses a datetime-local value in the browser's local timezone.
-	if matched, _ := regexp.MatchString(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$`, s); matched {
+	if datetimeLocalRE.MatchString(s) {
 		d := js.Global().Get("Date").New(s)
 		if !math.IsNaN(d.Call("getTime").Float()) {
 			if t, err := time.Parse(time.RFC3339Nano, d.Call("toISOString").String()); err == nil {

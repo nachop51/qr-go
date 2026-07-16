@@ -16,14 +16,18 @@ func ReedSolomon(data []byte, ecCount int, enc *gf256.RSEncoder) []byte {
 }
 
 func Interleave(dataBlocks, ecBlocks [][]byte) []byte {
-	result := []byte{}
-
+	total := 0
 	maxDataLen := 0
 	for _, block := range dataBlocks {
+		total += len(block)
 		if len(block) > maxDataLen {
 			maxDataLen = len(block)
 		}
 	}
+	for _, block := range ecBlocks {
+		total += len(block)
+	}
+	result := make([]byte, 0, total)
 
 	for col := 0; col < maxDataLen; col++ {
 		for _, block := range dataBlocks {

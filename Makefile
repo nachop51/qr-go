@@ -4,7 +4,10 @@ WASM_OUT  := web/qr.wasm
 WASM_EXEC := web/src/vendor/wasm_exec.js
 GOROOT    := $(shell go env GOROOT)
 
-.PHONY: all build wasm serve web-build web-test web-smoke test race vuln cover vet fmt fmt-check check install clean help
+# Keep in sync with the golangci-lint-action version in .github/workflows/ci.yml.
+GOLANGCI_LINT_VERSION := v2.12.2
+
+.PHONY: all build wasm serve web-build web-test web-smoke test race vuln cover vet lint fmt fmt-check check install clean help
 
 all: build wasm ## Build the CLI and the wasm bundle
 
@@ -65,6 +68,9 @@ cover: ## Run tests with coverage and open the report
 vet: ## Run go vet
 	go vet ./...
 
+lint: ## Run golangci-lint (config in .golangci.yml)
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run
+
 fmt: ## Format all Go files
 	gofmt -w .
 
@@ -76,7 +82,7 @@ fmt-check: ## Fail if any file is not gofmt-ed (CI check)
 		exit 1; \
 	fi
 
-check: fmt-check vet build race ## Core Go checks (CI also runs vuln and web gates)
+check: fmt-check vet lint build race ## Core Go checks (CI also runs vuln and web gates)
 
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR) coverage.out $(WASM_OUT)

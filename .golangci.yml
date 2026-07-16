@@ -1,0 +1,59 @@
+# golangci-lint v2 configuration (run via `make lint`).
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - gocritic
+    - govet
+    - ineffassign
+    - misspell
+    - staticcheck
+    - unused
+  settings:
+    errcheck:
+      # Writes to --info/stderr streams and hash.Hash never carry actionable
+      # errors here; checking each call is pure noise.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    gocritic:
+      disabled-checks:
+        # internal/spec tables use `//10`-style row markers on purpose.
+        - commentFormatting
+    misspell:
+      # No locale: the codebase mixes British spellings (centres, neighbour)
+      # on purpose; only flag genuine typos.
+    staticcheck:
+      checks:
+        # Upstream defaults, plus two quickfix suggestions that are pure
+        # style preference (De Morgan rewrites, tagged-switch rewrites).
+        - all
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -ST1023
+        - -QF1001
+        - -QF1003
+        - -QF1011
+  exclusions:
+    rules:
+      # Tests may ignore Close errors on temp files and use example-style
+      # shortcuts (log.Fatal after defer, unchecked strings.Index).
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gocritic
+      # Benign unchecked Close: read-path defer in loadLogo, and the
+      # belt-and-suspenders double close in the atomic-write cleanup defer.
+      - path: cmd/qrgo/render\.go
+        linters: [errcheck]
+        text: 'f\.Close` is not checked'
+      - path: cmd/qrgo/root\.go
+        linters: [errcheck]
+        text: 'f\.Close` is not checked'

@@ -77,6 +77,71 @@ func TestConformanceEveryVersionLevelAndMask(t *testing.T) {
 	}
 }
 
+// TestConformanceNumericAndAlphanumeric compares numeric and alphanumeric
+// bit-packing against the reference implementation. The payloads are chosen so
+// the segmenter keeps a single segment of the intended mode, making the
+// matrices directly comparable. Versions cover both sides of the 9/10 and
+// 26/27 boundaries, where the character-count indicator widens.
+func TestConformanceNumericAndAlphanumeric(t *testing.T) {
+	modes := []struct {
+		mode    string
+		payload string
+		ref     func(string) (reference.Encoding, error)
+	}{
+		{"Numeric", "0123456789", func(s string) (reference.Encoding, error) { return reference.Num(s), nil }},
+		{"Alphanumeric", "A $%*+-./:", func(s string) (reference.Encoding, error) { return reference.Alpha(s), nil }},
+	}
+	levels := []struct {
+		ours CorrectionLevel
+		ref  reference.Level
+	}{
+		{CorrectionLevelLow, reference.L},
+		{CorrectionLevelMedium, reference.M},
+		{CorrectionLevelQuartile, reference.Q},
+		{CorrectionLevelHigh, reference.H},
+	}
+
+	for _, mc := range modes {
+		for _, version := range []int{1, 9, 10, 26, 27, 40} {
+			for _, level := range levels {
+				for mask := 0; mask < 8; mask++ {
+					ours, err := NewTextBuilder(mc.payload).
+						SetVersion(version).
+						SetMask(mask).
+						SetErrorCorrectionLevel(level.ours).
+						Build()
+					if err != nil {
+						t.Fatalf("%s build v%d/%v/m%d: %v", mc.mode, version, level.ours, mask, err)
+					}
+					if segs := ours.Segments(); len(segs) != 1 || segs[0].Mode() != mc.mode {
+						t.Fatalf("%s v%d: segmented as %+v, want single %s segment", mc.mode, version, segs, mc.mode)
+					}
+
+					plan, err := reference.NewPlan(reference.Version(version), level.ref, reference.Mask(mask))
+					if err != nil {
+						t.Fatalf("reference plan v%d/%v/m%d: %v", version, level.ours, mask, err)
+					}
+					enc, err := mc.ref(mc.payload)
+					if err != nil {
+						t.Fatalf("reference encoding %s: %v", mc.mode, err)
+					}
+					want, err := plan.Encode(enc)
+					if err != nil {
+						t.Fatalf("reference encode %s v%d/%v/m%d: %v", mc.mode, version, level.ours, mask, err)
+					}
+					for y := 0; y < ours.Size(); y++ {
+						for x := 0; x < ours.Size(); x++ {
+							if got, expected := ours.IsDark(x, y), want.Black(x, y); got != expected {
+								t.Fatalf("%s v%d/%v/m%d module (%d,%d)=%v, want %v", mc.mode, version, level.ours, mask, x, y, got, expected)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestMaximumCapacityBoundaries(t *testing.T) {
 	cases := []struct {
 		name, unit string

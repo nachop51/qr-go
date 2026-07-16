@@ -16,15 +16,6 @@ var (
 	ErrVersionTooSmall = spec.ErrVersionTooSmall
 )
 
-// Compatibility aliases keep the stable error categories discoverable under
-// both concise and descriptive names.
-var (
-	ErrInvalidUTF8Text       = ErrInvalidUTF8
-	ErrExcessiveData         = ErrDataTooLong
-	ErrInvalidOption         = ErrInvalidOptions
-	ErrForcedVersionTooSmall = ErrVersionTooSmall
-)
-
 // Render delegates entirely to the chosen renderer
 func (q *Code) Render() error {
 	if q.renderer == nil {
@@ -41,7 +32,12 @@ func (q *Code) Bytes() ([]byte, error) {
 }
 
 // Module count
-func (q *Code) Size() int { return q.matrix.Size() }
+func (q *Code) Size() int {
+	if q == nil || q.matrix == nil {
+		return 0
+	}
+	return q.matrix.Size()
+}
 
 func (q *Code) IsDark(x, y int) bool {
 	return q != nil && q.matrix != nil && q.matrix.InBounds(x, y) && q.matrix.Get(x, y) == matrix.Black

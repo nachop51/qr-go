@@ -86,14 +86,14 @@ func (b *Builder) Build() (*Code, error) {
 	if b.mask != -1 && (b.mask < 0 || b.mask > 7) {
 		return nil, fmt.Errorf("%w: mask must be auto or between 0 and 7", ErrInvalidOptions)
 	}
-	if b.renderer == nil || (reflect.ValueOf(b.renderer).Kind() == reflect.Ptr && reflect.ValueOf(b.renderer).IsNil()) {
+	if b.renderer == nil || (reflect.ValueOf(b.renderer).Kind() == reflect.Pointer && reflect.ValueOf(b.renderer).IsNil()) {
 		return nil, fmt.Errorf("%w: renderer is nil", ErrInvalidOptions)
 	}
 	if b.dataKind == DataKindText && len(b.data) > 7089 {
 		return nil, ErrDataTooLong
 	}
 
-	var isECI bool = false
+	var isECI bool
 	var segments []Segment
 	var err error
 
@@ -140,7 +140,9 @@ func (b *Builder) Build() (*Code, error) {
 
 	data := buildCodewords(segments, version, b.errorCorrectionLevel, isECI)
 
-	placeData(qrObj.matrix, data)
+	if err := placeData(qrObj.matrix, data); err != nil {
+		return nil, err
+	}
 
 	if b.mask == -1 {
 		qrObj.mask = bestMask(qrObj.matrix, version, b.errorCorrectionLevel)

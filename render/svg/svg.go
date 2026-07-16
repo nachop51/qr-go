@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/xml"
 	"fmt"
+	"hash/fnv"
 	"image"
 	"image/png"
 	"io"
@@ -272,8 +273,9 @@ func (s SVG) styledMarkup(g render.Grid, logoMods, module, quiet, size int) (str
 
 	moduleFill := s.dark
 	if s.gradient != style.GradientNone {
-		s.writeGradient(&sb, size)
-		moduleFill = "url(#qrgo-gradient)"
+		id := s.gradientID(g)
+		s.writeGradient(&sb, size, id)
+		moduleFill = "url(#" + id + ")"
 	}
 	frameFill := s.eyeFrame
 	if frameFill == "" {
@@ -351,21 +353,50 @@ func (s SVG) warnContrast() {
 	}
 }
 
+// gradientID derives the id for the gradient <defs> element from the gradient
+// definition and the grid content, so several qr-go SVGs inlined in one HTML
+// document don't fight over a shared id (the first <defs> would win and
+// repaint every code). Content-derived rather than a counter, so output stays
+// deterministic; two identical codes sharing an id is harmless because their
+// gradient definitions are identical too.
+func (s SVG) gradientID(g render.Grid) string {
+	h := fnv.New32a()
+	fmt.Fprintf(h, "%d|%s|%s|%g|%d|", s.gradient, s.gradFrom, s.gradTo, s.gradAngle, g.Size())
+	var acc byte
+	bits := 0
+	for y := 0; y < g.Size(); y++ {
+		for x := 0; x < g.Size(); x++ {
+			acc <<= 1
+			if g.IsDark(x, y) {
+				acc |= 1
+			}
+			if bits++; bits == 8 {
+				h.Write([]byte{acc})
+				acc, bits = 0, 0
+			}
+		}
+	}
+	if bits > 0 {
+		h.Write([]byte{acc})
+	}
+	return fmt.Sprintf("qrgo-gradient-%08x", h.Sum32())
+}
+
 // writeGradient emits the <defs> block for the module gradient, spanning the
 // whole image in user space so all three paint groups share one ramp.
-func (s SVG) writeGradient(sb *strings.Builder, size int) {
+func (s SVG) writeGradient(sb *strings.Builder, size int, id string) {
 	sb.WriteString(`<defs>`)
 	if s.gradient == style.GradientRadial {
 		// Radius reaches the corners so no module clamps to the end stop early.
 		r := float64(size) * math.Sqrt2 / 2
-		fmt.Fprintf(sb, `<radialGradient id="qrgo-gradient" gradientUnits="userSpaceOnUse" cx="%d" cy="%d" r="%s">`,
-			size/2, size/2, fmtNum(r))
+		fmt.Fprintf(sb, `<radialGradient id="%s" gradientUnits="userSpaceOnUse" cx="%d" cy="%d" r="%s">`,
+			id, size/2, size/2, fmtNum(r))
 		fmt.Fprintf(sb, `<stop offset="0" stop-color="%s"/><stop offset="1" stop-color="%s"/></radialGradient>`, escapeAttr(s.gradFrom), escapeAttr(s.gradTo))
 	} else {
 		rad := s.gradAngle * math.Pi / 180
 		c := float64(size) / 2
-		fmt.Fprintf(sb, `<linearGradient id="qrgo-gradient" gradientUnits="userSpaceOnUse" x1="%s" y1="%s" x2="%s" y2="%s">`,
-			fmtNum(c*(1-math.Cos(rad))), fmtNum(c*(1-math.Sin(rad))),
+		fmt.Fprintf(sb, `<linearGradient id="%s" gradientUnits="userSpaceOnUse" x1="%s" y1="%s" x2="%s" y2="%s">`,
+			id, fmtNum(c*(1-math.Cos(rad))), fmtNum(c*(1-math.Sin(rad))),
 			fmtNum(c*(1+math.Cos(rad))), fmtNum(c*(1+math.Sin(rad))))
 		fmt.Fprintf(sb, `<stop offset="0" stop-color="%s"/><stop offset="1" stop-color="%s"/></linearGradient>`, escapeAttr(s.gradFrom), escapeAttr(s.gradTo))
 	}
@@ -373,20 +404,50 @@ func (s SVG) writeGradient(sb *strings.Builder, size int) {
 }
 
 // svgPath writes style.Path commands as SVG path data, mapping module units
-// to pixels: px = (v + quiet) * module.
+// to pixels: px = (v + quiet) * module. Coordinates are formatted into a
+// reused scratch buffer and streamed straight onto the builder, so emitting a
+// command allocates nothing.
 type svgPath struct {
 	sb         *strings.Builder
 	scale, off float64
+	buf        []byte // scratch for strconv.AppendFloat
 }
 
-func (p *svgPath) t(v float64) string { return fmtNum((v + p.off) * p.scale) }
+// num writes one coordinate, formatted like fmtNum (at most two decimals, no
+// trailing zeros), without building an intermediate string.
+func (p *svgPath) num(v float64) {
+	v = math.Round((v+p.off)*p.scale*100) / 100
+	p.buf = strconv.AppendFloat(p.buf[:0], v, 'f', -1, 64)
+	p.sb.Write(p.buf)
+}
 
-func (p *svgPath) MoveTo(x, y float64) { p.sb.WriteString("M" + p.t(x) + " " + p.t(y)) }
-func (p *svgPath) LineTo(x, y float64) { p.sb.WriteString("L" + p.t(x) + " " + p.t(y)) }
+// pair writes "x y".
+func (p *svgPath) pair(x, y float64) {
+	p.num(x)
+	p.sb.WriteByte(' ')
+	p.num(y)
+}
+
+func (p *svgPath) MoveTo(x, y float64) {
+	p.sb.WriteByte('M')
+	p.pair(x, y)
+}
+
+func (p *svgPath) LineTo(x, y float64) {
+	p.sb.WriteByte('L')
+	p.pair(x, y)
+}
+
 func (p *svgPath) CubeTo(c1x, c1y, c2x, c2y, x, y float64) {
-	p.sb.WriteString("C" + p.t(c1x) + " " + p.t(c1y) + " " + p.t(c2x) + " " + p.t(c2y) + " " + p.t(x) + " " + p.t(y))
+	p.sb.WriteByte('C')
+	p.pair(c1x, c1y)
+	p.sb.WriteByte(' ')
+	p.pair(c2x, c2y)
+	p.sb.WriteByte(' ')
+	p.pair(x, y)
 }
-func (p *svgPath) Close() { p.sb.WriteString("Z") }
+
+func (p *svgPath) Close() { p.sb.WriteByte('Z') }
 
 // fmtNum renders a coordinate with at most two decimals and no trailing zeros.
 func fmtNum(v float64) string {

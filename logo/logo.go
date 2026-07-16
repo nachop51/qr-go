@@ -37,6 +37,7 @@ const (
 	MaxSourceDimension = 4096
 	MaxSourcePixels    = 16_000_000
 	MaxSVGRasterEdge   = 2048
+	MaxSVGElements     = 100_000
 )
 
 // Decode reads a logo from r, detecting the format from its content. It supports
@@ -92,6 +93,13 @@ func isSVG(data []byte) bool {
 }
 
 func rasterizeSVG(data []byte) (image.Image, error) {
+	// Byte size and raster edge are capped elsewhere, but a byte-small SVG can
+	// still pack enough elements to burn unbounded CPU in oksvg. Counting '<'
+	// bytes over-approximates the element count (comments, closing tags and
+	// CDATA all count), which is fine for a denial-of-service guard.
+	if bytes.Count(data, []byte("<")) > MaxSVGElements {
+		return nil, fmt.Errorf("logo: SVG has more than %d elements", MaxSVGElements)
+	}
 	if err := validateSVGRoot(data); err != nil {
 		return nil, err
 	}

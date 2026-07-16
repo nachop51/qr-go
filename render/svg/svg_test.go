@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -227,13 +228,14 @@ func TestSVGGradient(t *testing.T) {
 	}
 	out := buf.String()
 
-	if !strings.Contains(out, `<linearGradient id="qrgo-gradient" gradientUnits="userSpaceOnUse" x1="105" y1="0" x2="105" y2="210">`) {
+	m := regexp.MustCompile(`<linearGradient id="(qrgo-gradient-[0-9a-f]{8})" gradientUnits="userSpaceOnUse" x1="105" y1="0" x2="105" y2="210">`).FindStringSubmatch(out)
+	if m == nil {
 		t.Fatalf("expected vertical linear gradient across the 210px image, got: %s", out)
 	}
 	if !strings.Contains(out, `<stop offset="0" stop-color="#0f172a"/><stop offset="1" stop-color="#7f1d1d"/>`) {
 		t.Fatalf("expected two gradient stops, got: %s", out)
 	}
-	if got := strings.Count(out, `<path fill="url(#qrgo-gradient)"`); got != 3 {
+	if got := strings.Count(out, `<path fill="url(#`+m[1]+`)"`); got != 3 {
 		t.Fatalf("all 3 paint groups should share the gradient, got %d: %s", got, out)
 	}
 
@@ -241,8 +243,34 @@ func TestSVGGradient(t *testing.T) {
 	if err := New().Writer(&buf).GradientRadial("#000", "#333").Render(fakeGrid{n: 21}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(buf.String(), `<radialGradient id="qrgo-gradient"`) {
+	if !regexp.MustCompile(`<radialGradient id="qrgo-gradient-[0-9a-f]{8}"`).MatchString(buf.String()) {
 		t.Fatalf("expected radial gradient, got: %s", buf.String())
+	}
+}
+
+// The gradient id is derived from the gradient definition and grid content, so
+// distinct codes inlined in one HTML document don't collide, while re-rendering
+// the same code stays byte-for-byte deterministic.
+func TestSVGGradientIDUniqueAndDeterministic(t *testing.T) {
+	id := func(from, to string, n int) string {
+		out, err := New().GradientLinear(from, to, 45).Bytes(fakeGrid{n: n})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := regexp.MustCompile(`id="(qrgo-gradient-[0-9a-f]{8})"`).FindSubmatch(out)
+		if m == nil {
+			t.Fatalf("no gradient id in: %s", out)
+		}
+		return string(m[1])
+	}
+	if a, b := id("#000", "#333", 21), id("#000", "#333", 21); a != b {
+		t.Fatalf("same input produced different ids: %s vs %s", a, b)
+	}
+	if a, b := id("#000", "#333", 21), id("#000", "#444", 21); a == b {
+		t.Fatalf("different gradients share id %s", a)
+	}
+	if a, b := id("#000", "#333", 21), id("#000", "#333", 25); a == b {
+		t.Fatalf("different grids share id %s", a)
 	}
 }
 
