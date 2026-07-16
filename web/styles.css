@@ -4,7 +4,10 @@
 
 /* Departure Mono (OFL-1.1, Helena Zhang): pixel-grid mono, same visual
    grammar as the QR modules. Self-hosted: no external requests. Single
-   weight; font-synthesis is disabled so browsers don't fake a bold. */
+   weight; font-synthesis is disabled so browsers don't fake a bold.
+   Bun's bundler always inlines CSS fonts as data: URIs (no file-loader
+   escape), so the CSP in _headers must keep `data:` in font-src or the font
+   silently falls back to system mono in production. */
 @font-face {
   font-family: "Departure Mono";
   src: url("./fonts/DepartureMono-Regular.woff2") format("woff2");
@@ -118,31 +121,27 @@ body {
   line-height: 0;
 }
 
+/* Stagger the stamp with a transition, not an animation: the cascaded value
+   is opacity 1, so if the engine drops the transition (WebKit leaves batches
+   of delayed per-rect animations stuck in their fill state; that shipped as a
+   garbled wordmark on iOS) the worst case is a rect that appears instantly,
+   never one that stays invisible. */
 #wordmark rect {
   opacity: 1;
+  transition: opacity 1ms steps(1, start);
+  transition-delay: calc(180ms + var(--i) * 8ms);
 }
 
 body:not(.ready) #wordmark rect {
   opacity: 0;
+  transition: none;
 }
 
-body.ready #wordmark rect {
-  animation: stamp 0.18s steps(1) both;
-  animation-delay: calc(var(--i) * 8ms);
-}
-
-/* Same stamp under a second name so hover can restart it. */
+/* Hover replay stays an animation (transitions can't re-fire). Safe: the rule
+   only holds while hovered, so a stuck fill heals itself on mouse-out. */
 body.ready .wordmark:hover #wordmark rect {
-  animation-name: restamp;
-}
-
-@keyframes stamp {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  animation: restamp 0.18s steps(1) both;
+  animation-delay: calc(var(--i) * 8ms);
 }
 
 @keyframes restamp {
@@ -1374,7 +1373,10 @@ a.byline-name {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  body.ready #wordmark rect,
+  #wordmark rect {
+    transition: none;
+  }
+
   body.ready .wordmark:hover #wordmark rect,
   .ticket.printed .preview :is(svg, img),
   .ticket.printed .preview::after,

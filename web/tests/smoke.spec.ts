@@ -44,6 +44,41 @@ test("WASM previews, exports, and accepts every advertised logo format", async (
   expect((await svgDownload).suggestedFilename()).toMatch(/\.svg$/);
 });
 
+test("pixel font, wordmark, and icons survive the production CSP", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => document.body.classList.contains("ready"));
+
+  // The font must actually load; under the dist server the production CSP is
+  // enforced, so a data:-inlined font (blocked by font-src 'self') fails here.
+  await page.waitForFunction(() => document.fonts.check('16px "Departure Mono"'));
+
+  // Every wordmark pixel must be visible once the stamp stagger is over.
+  // Guards the WebKit bug where batches of delayed per-rect animations stayed
+  // stuck in their opacity:0 fill state (garbled logo on iOS).
+  await page.waitForTimeout(1500);
+  const wordmark = await page.evaluate(() => {
+    const rects = [...document.querySelectorAll("#wordmark rect")];
+    return {
+      total: rects.length,
+      hidden: rects.filter((r) => getComputedStyle(r).opacity !== "1").length,
+    };
+  });
+  expect(wordmark.total).toBeGreaterThan(0);
+  expect(wordmark.hidden).toBe(0);
+
+  // Icon links (incl. the PNG fallbacks Safari needs) must resolve.
+  const iconHrefs = await page.evaluate(() =>
+    [...document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]')].map(
+      (l) => (l as HTMLLinkElement).href,
+    ),
+  );
+  expect(iconHrefs.length).toBeGreaterThanOrEqual(3);
+  for (const href of iconHrefs) {
+    const res = await page.request.get(href);
+    expect(res.status(), href).toBe(200);
+  }
+});
+
 test("preview stays contained inside its ticket regardless of render element", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => typeof globalThis.qrgo?.generate === "function");
