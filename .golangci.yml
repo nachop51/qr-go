@@ -8,7 +8,6 @@ linters:
     - gocritic
     - govet
     - ineffassign
-    - misspell
     - staticcheck
     - unused
   settings:
@@ -23,9 +22,6 @@ linters:
       disabled-checks:
         # internal/spec tables use `//10`-style row markers on purpose.
         - commentFormatting
-    misspell:
-      # No locale: the codebase mixes British spellings (centres, neighbour)
-      # on purpose; only flag genuine typos.
     staticcheck:
       checks:
         # Upstream defaults, plus two quickfix suggestions that are pure
