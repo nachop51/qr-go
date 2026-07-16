@@ -920,7 +920,7 @@ input[type="range"]:active::-moz-range-thumb {
 
 /* The print: each regeneration wipes the code in from the top in discrete
    rows, a blue print head sweeping just ahead of the ink. */
-.ticket.printed .preview svg {
+.ticket.printed .preview :is(svg, img) {
   animation: print-wipe var(--print) both;
 }
 
@@ -1018,7 +1018,7 @@ input[type="range"]:active::-moz-range-thumb {
   aspect-ratio: 1;
 }
 
-.preview svg {
+.preview :is(svg, img) {
   width: 100%;
   height: 100%;
   image-rendering: pixelated;
@@ -1376,7 +1376,7 @@ a.byline-name {
 @media (prefers-reduced-motion: reduce) {
   body.ready #wordmark rect,
   body.ready .wordmark:hover #wordmark rect,
-  .ticket.printed .preview svg,
+  .ticket.printed .preview :is(svg, img),
   .ticket.printed .preview::after,
   .ticket.printed .mark,
   .field-row,

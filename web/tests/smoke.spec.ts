@@ -43,3 +43,27 @@ test("WASM previews, exports, and accepts every advertised logo format", async (
   await page.locator("#download").click();
   expect((await svgDownload).suggestedFilename()).toMatch(/\.svg$/);
 });
+
+test("preview stays contained inside its ticket regardless of render element", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => typeof globalThis.qrgo?.generate === "function");
+
+  await page.locator("textarea").first().fill("containment check");
+  const rendered = page.locator("#preview img, #preview svg").first();
+  await expect(rendered).toBeVisible();
+
+  const container = await page.locator("#preview").boundingBox();
+  const content = await rendered.boundingBox();
+  expect(container).not.toBeNull();
+  expect(content).not.toBeNull();
+  expect(content!.width).toBeLessThanOrEqual(container!.width + 1);
+  expect(content!.height).toBeLessThanOrEqual(container!.height + 1);
+  expect(content!.x).toBeGreaterThanOrEqual(container!.x - 1);
+  expect(content!.y).toBeGreaterThanOrEqual(container!.y - 1);
+
+  // The page itself must never scroll horizontally because of the preview.
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+});
